@@ -69,7 +69,15 @@ streamlit.watcher.path_watcher.watch_dir = patched_watch_dir
 load_dotenv()  # Keep this for local development
 
 # Get OpenAI API key from Streamlit secrets or environment variable
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+try:
+    OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") 
+except:
+    OPENAI_API_KEY = None
+
+# Fallback to environment variable if secrets not available
+if not OPENAI_API_KEY:
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 if not OPENAI_API_KEY:
     st.error("OpenAI API key not found. Please set it in .streamlit/secrets.toml or .env file.")
     st.stop()

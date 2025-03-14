@@ -32,3 +32,4 @@ filetype
 # pi-heif
 
 joblib>=1.3.2
+pillow-heif
