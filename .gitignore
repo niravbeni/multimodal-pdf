@@ -1,0 +1,36 @@
+# Joblib files and preprocessed data
+*.joblib
+preprocessed_data/
+primary_collection.joblib
+
+# ChromaDB files
+chroma_db/
+.chroma/
+
+# Python-specific ignores
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+env/
+.venv/
+ENV/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Common data and model files
+*.pkl
+*.h5
+*.hdf5
+*.model
+*.bin
+*.dat
+large_files/
+data/
+models/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
