@@ -77,7 +77,19 @@ if not OPENAI_API_KEY:
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY  # Set for OpenAI client
 
 # Constants for preloaded collection
-PREPROCESSED_DATA_PATH = "./preprocessed_data"
+if os.environ.get('RENDER'):
+    # Use Render's persistent disk in production
+    PREPROCESSED_DATA_PATH = "/data/preprocessed_data"
+    # Also update ChromaDB path for Render
+    def ensure_chroma_directory():
+        """Ensure the ChromaDB directory exists"""
+        chroma_dir = "/data/chroma_db"
+        os.makedirs(chroma_dir, exist_ok=True)
+        return chroma_dir
+else:
+    # Use local path in development
+    PREPROCESSED_DATA_PATH = "./preprocessed_data"
+
 PREPROCESSED_COLLECTION_FILE = os.path.join(PREPROCESSED_DATA_PATH, "primary_collection.joblib")
 
 # Check if preprocessed_data directory exists
