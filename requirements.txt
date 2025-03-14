@@ -1,25 +1,26 @@
-streamlit>=1.30.0
-python-dotenv>=1.0.0
-langchain>=0.1.0
-langchain-openai>=0.0.5
+# Core dependencies
+streamlit
+langchain
+langchain-openai
 langchain-community
-langchain-core>=0.1.0
-langchain-chroma>=0.0.1
-openai>=1.0.0
-chromadb>=0.4.18
-pdfminer.six
-pillow
-PyPDF2>=3.0.0
-# pysqlite3-binary>=0.5.1  # Comment this out for macOS
+python-dotenv
+chromadb
+joblib
 
 # PDF processing
-unstructured[all]
+unstructured[all-docs]
+pillow-heif
 pdf2image
+pdfminer.six
+pypdf2
 pytesseract
-python-magic
-nltk
-markdown
-filetype
+
+# Other utilities
+boto3
+
+# Remove these problematic dependencies
+# python-poppler
+# pi-heif
 
 # System dependencies handled by packages.txt:
 # tesseract-ocr
@@ -27,9 +28,12 @@ filetype
 # libmagic1
 # libgl1-mesa-glx
 
-# Remove these problematic dependencies
-# python-poppler
-# pi-heif
+# pysqlite3-binary>=0.5.1  # Comment this out for macOS
 
-joblib>=1.3.2
-pillow-heif
+# PDF processing
+# unstructured[all]
+# pytesseract
+# python-magic
+# nltk
+# markdown
+# filetype

@@ -2,6 +2,8 @@ tesseract-ocr
 poppler-utils
 libmagic1
 libgl1-mesa-glx
+python3-dev
+build-essential
 libglib2.0-0
 libsm6
 libxext6
