@@ -6,6 +6,15 @@ import os
 import time
 import shutil
 
+# Set page config must be the first Streamlit command
+import streamlit as st
+st.set_page_config(
+    page_title="Multimodal PDF Chat",
+    page_icon="📄",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # SQLite fix for ChromaDB
 try:
     __import__('pysqlite3')
@@ -18,7 +27,6 @@ import warnings
 import traceback
 import logging
 import joblib
-import streamlit as st
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.memory import ConversationBufferMemory
@@ -478,15 +486,6 @@ def cleanup_old_collections():
 def main():
     # Add cleanup of old collections at start
     cleanup_old_collections()
-    
-    # Set up Streamlit page configuration
-    st.set_page_config(
-        page_title="Multimodal PDF Chat",
-        page_icon="📚",
-        layout="wide",
-        initial_sidebar_state="expanded",
-        menu_items=None
-    )
     
     # Initialize session state
     initialize_session_state()
