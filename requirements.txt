@@ -13,7 +13,7 @@ langchain-chroma
 
 # PDF processing
 unstructured[all]
-python-magic-bin
+python-magic
 pillow
 pdf2image
 pdfminer.six
