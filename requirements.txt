@@ -12,8 +12,9 @@ joblib
 langchain-chroma
 
 # PDF processing
-unstructured[all-docs]
-pillow-heif
+unstructured[all]
+python-magic-bin
+pillow
 pdf2image
 pdfminer.six
 pypdf2
@@ -22,22 +23,11 @@ pytesseract
 # Other utilities
 boto3
 
-# Remove these problematic dependencies
-# python-poppler
-# pi-heif
-
 # System dependencies handled by packages.txt:
 # tesseract-ocr
 # poppler-utils
 # libmagic1
 # libgl1-mesa-glx
 
-# pysqlite3-binary>=0.5.1  # Comment this out for macOS
-
-# PDF processing
-# unstructured[all]
-# pytesseract
-# python-magic
-# nltk
-# markdown
-# filetype
+# Optional: Uncomment for non-macOS
+# pysqlite3-binary>=0.5.1
