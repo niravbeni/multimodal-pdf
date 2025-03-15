@@ -11,4 +11,7 @@ libxrender1
 libfontconfig1
 pandoc
 ghostscript
-tesseract-ocr-all 
+tesseract-ocr-all
+# Add these for better PDF support
+pdftk-java
+imagemagick 

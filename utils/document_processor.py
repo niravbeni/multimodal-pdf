@@ -37,14 +37,11 @@ def process_pdfs_with_unstructured(pdf_paths):
                 # Extract content using the same parameters as the example
                 chunks = partition_pdf(
                     filename=pdf_path,
-                    infer_table_structure=True,
                     strategy="hi_res",
-                    extract_image_block_types=["Image"],
-                    extract_image_block_to_payload=True,
+                    infer_table_structure=True,
                     chunking_strategy="by_title",
-                    max_characters=10000,
-                    combine_text_under_n_chars=2000,
-                    new_after_n_chars=6000,
+                    max_characters=2000,
+                    new_after_n_chars=1500
                 )
                 logger.info(f"Successfully extracted {len(chunks)} chunks from {pdf_path}")
                 

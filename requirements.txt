@@ -12,14 +12,15 @@ joblib
 langchain-chroma
 
 # PDF processing
-unstructured[all-docs]
+unstructured[all-docs]>=0.10.30
+unstructured-inference>=0.7.12
 pi-heif
 python-magic
-pillow
-pdf2image
-pdfminer.six
-pypdf2
-pytesseract
+pillow>=10.0.0
+pdf2image>=1.16.3
+pdfminer.six>=20221105
+pypdf2>=3.0.0
+pytesseract>=0.3.10
 
 # Other utilities
 boto3
