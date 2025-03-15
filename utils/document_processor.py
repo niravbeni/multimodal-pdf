@@ -36,9 +36,24 @@ def process_pdfs_with_unstructured(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
-                # Use auto partition instead of partition_pdf
-                chunks = partition(filename=pdf_path)
-                logger.info(f"Successfully extracted {len(chunks)} chunks from {pdf_path}")
+                # Extract content using partition_pdf
+                chunks = partition_pdf(
+                    filename=pdf_path,
+                    strategy="hi_res",  # Back to hi_res
+                    infer_table_structure=True,
+                    extract_image_block_types=["Image"],  # Add this back
+                    extract_image_block_to_payload=True,  # Add this back
+                    chunking_strategy="by_title",
+                    max_characters=2000,
+                    new_after_n_chars=1500
+                )
+                
+                # Log chunk details for debugging
+                logger.info(f"Extracted {len(chunks)} chunks")
+                for chunk in chunks:
+                    logger.info(f"Chunk type: {type(chunk)}")
+                    if hasattr(chunk, 'text'):
+                        logger.info(f"Text length: {len(chunk.text)}")
                 
                 # Process chunks
                 pdf_tables = []
@@ -46,27 +61,34 @@ def process_pdfs_with_unstructured(pdf_paths):
                 pdf_images = []
                 
                 for chunk in chunks:
-                    # Print chunk type for debugging
-                    logger.info(f"Found chunk of type: {type(chunk)}")
-                    
-                    if hasattr(chunk, 'text') and chunk.text.strip():
-                        if "Table" in str(type(chunk)):
-                            pdf_tables.append(chunk)
-                        else:
-                            pdf_texts.append(chunk)
-                            logger.info(f"Extracted text length: {len(chunk.text)}")
-                    
-                    # Check for images
-                    if hasattr(chunk, 'metadata') and 'image_base64' in chunk.metadata:
-                        pdf_images.append(chunk.metadata['image_base64'])
+                    if "Table" in str(type(chunk)):
+                        pdf_tables.append(chunk)
+                        logger.info("Found table chunk")
+                    elif "CompositeElement" in str(type(chunk)):
+                        pdf_texts.append(chunk)
+                        logger.info("Found text chunk")
+                
+                # Get images from CompositeElements
+                for chunk in chunks:
+                    if "CompositeElement" in str(type(chunk)):
+                        if hasattr(chunk, 'metadata') and hasattr(chunk.metadata, 'orig_elements'):
+                            chunk_els = chunk.metadata.orig_elements
+                            for el in chunk_els:
+                                if "Image" in str(type(el)):
+                                    if hasattr(el, 'metadata') and hasattr(el.metadata, 'image_base64'):
+                                        pdf_images.append(el.metadata.image_base64)
+                                        logger.info("Found image chunk")
                 
                 # Add to collections
                 all_texts.extend(pdf_texts)
                 all_tables.extend(pdf_tables)
                 all_images.extend(pdf_images)
                 
+                logger.info(f"Processed {pdf_path}: {len(pdf_texts)} texts, {len(pdf_tables)} tables, {len(pdf_images)} images")
+                
             except Exception as e:
                 logger.error(f"Error in unstructured processing: {str(e)}")
+                logger.error(traceback.format_exc())  # Add full traceback
                 return [], [], []  # Return empty lists to trigger fallback
         
         status.update(label=f"PDF processing complete! Extracted {len(all_texts)} text chunks, {len(all_tables)} tables, {len(all_images)} images.", state="complete")
