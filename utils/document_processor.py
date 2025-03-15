@@ -9,6 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain.schema.document import Document
 import logging
+from unstructured.partition.auto import partition
 
 # At the top of the file, add debug logging
 logging.basicConfig(level=logging.INFO)
@@ -34,22 +35,15 @@ def process_pdfs_with_unstructured(pdf_paths):
         for i, pdf_path in enumerate(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
-                # Extract content using the same parameters as the example
-                chunks = partition_pdf(
-                    filename=pdf_path,
-                    strategy="fast",
-                    infer_table_structure=True,
-                    chunking_strategy="by_title",
-                    max_characters=4000,
-                    new_after_n_chars=3000,
-                    include_metadata=True,
-                    ocr_languages=['eng']
-                )
+                
+                # Use auto partition instead of partition_pdf
+                chunks = partition(filename=pdf_path)
                 logger.info(f"Successfully extracted {len(chunks)} chunks from {pdf_path}")
                 
-                # Separate chunks by type exactly like the example
+                # Process chunks
                 pdf_tables = []
                 pdf_texts = []
+                pdf_images = []
                 
                 for chunk in chunks:
                     # Print chunk type for debugging
@@ -60,28 +54,19 @@ def process_pdfs_with_unstructured(pdf_paths):
                             pdf_tables.append(chunk)
                         else:
                             pdf_texts.append(chunk)
-                        
-                        # Log content for debugging
-                        logger.info(f"Extracted text length: {len(chunk.text)}")
+                            logger.info(f"Extracted text length: {len(chunk.text)}")
+                    
+                    # Check for images
+                    if hasattr(chunk, 'metadata') and 'image_base64' in chunk.metadata:
+                        pdf_images.append(chunk.metadata['image_base64'])
                 
-                # Get images from CompositeElements like the example
-                pdf_images = []
-                for chunk in chunks:
-                    if "CompositeElement" in str(type(chunk)):
-                        if hasattr(chunk, 'metadata') and hasattr(chunk.metadata, 'orig_elements'):
-                            chunk_els = chunk.metadata.orig_elements
-                            for el in chunk_els:
-                                if "Image" in str(type(el)):
-                                    if hasattr(el, 'metadata') and hasattr(el.metadata, 'image_base64'):
-                                        pdf_images.append(el.metadata.image_base64)
-                
-                # Add to the overall collections
+                # Add to collections
                 all_texts.extend(pdf_texts)
                 all_tables.extend(pdf_tables)
                 all_images.extend(pdf_images)
                 
             except Exception as e:
-                print(f"Error in unstructured processing: {str(e)}")
+                logger.error(f"Error in unstructured processing: {str(e)}")
                 return [], [], []  # Return empty lists to trigger fallback
         
         status.update(label=f"PDF processing complete! Extracted {len(all_texts)} text chunks, {len(all_tables)} tables, {len(all_images)} images.", state="complete")
