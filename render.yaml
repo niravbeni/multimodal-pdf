@@ -6,8 +6,11 @@ services:
       # Install system dependencies with sudo
       sudo apt-get update
       sudo apt-get install -y tesseract-ocr tesseract-ocr-eng
-      # Verify tesseract installation
+      # Verify tesseract installation and location
+      which tesseract
       tesseract --version
+      # Create symlink in a known location
+      sudo ln -s $(which tesseract) /usr/local/bin/tesseract
       # Install Python dependencies
       pip install -r requirements.txt
     startCommand: streamlit run app.py
@@ -15,6 +18,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.12
+      - key: PATH
+        value: /usr/local/bin:/usr/bin:${PATH}
     disk:
       name: pdf-data
       mountPath: /data
