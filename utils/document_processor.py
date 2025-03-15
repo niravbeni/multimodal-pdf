@@ -9,7 +9,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain.schema.document import Document
 import logging
-from unstructured.partition.auto import partition
 
 # At the top of the file, add debug logging
 logging.basicConfig(level=logging.INFO)
@@ -17,12 +16,19 @@ logger = logging.getLogger(__name__)
 
 # Check if Unstructured is available
 try:
+    logger.info("Attempting to import Unstructured...")
     from unstructured.partition.pdf import partition_pdf
+    from unstructured.partition.auto import partition
+    from unstructured.documents.elements import Text, Title, NarrativeText, Table
+    
+    # Test if we can access key functionality
+    logger.info("Testing Unstructured functionality...")
     UNSTRUCTURED_AVAILABLE = True
-    logger.info("Unstructured successfully imported")
+    logger.info("Unstructured successfully imported and tested")
 except Exception as e:
     UNSTRUCTURED_AVAILABLE = False
     logger.error(f"Failed to import Unstructured: {str(e)}")
+    logger.error(f"Full traceback: {traceback.format_exc()}")
 
 def process_pdfs_with_unstructured(pdf_paths):
     """Process PDFs using Unstructured following the example approach"""
