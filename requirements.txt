@@ -14,8 +14,8 @@ langchain-chroma
 # PDF processing
 unstructured[all-docs]>=0.10.30
 unstructured-inference>=0.7.12
-pillow-heif; sys_platform == 'darwin'  # for macOS
-pi-heif; sys_platform == 'linux'  # for Linux/Render
+pillow-heif  # Try this first
+pi-heif  # Fallback option
 python-magic
 pillow>=10.0.0
 pdf2image>=1.16.3
