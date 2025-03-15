@@ -50,9 +50,7 @@ def process_pdfs_with_unstructured(pdf_paths):
                     extract_images=True,
                     include_metadata=True,
                     encoding="utf-8",
-                    ocr_languages=['eng'],
-                    pdf_image_dpi=300,
-                    use_ocr=True
+                    use_ocr=False  # Disable OCR for now
                 )
                 
                 # Log chunk details for debugging
