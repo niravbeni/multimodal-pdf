@@ -2,7 +2,9 @@ services:
   - type: web
     name: multimodal-pdf-chat
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-eng
+      pip install -r requirements.txt
     startCommand: streamlit run app.py
     plan: starter
     envVars:

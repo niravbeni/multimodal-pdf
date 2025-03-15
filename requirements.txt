@@ -8,24 +8,13 @@ langchain-core>=0.1.0
 langchain-chroma>=0.0.1
 openai>=1.0.0
 chromadb>=0.4.18
-pdfminer.six
-pillow
-PyPDF2>=3.0.0
 
 # PDF processing
 unstructured[local-inference]
-unstructured-inference
 pdf2image
-pytesseract
 python-magic
-nltk
-markdown
-filetype
+pillow
+PyPDF2>=3.0.0
 
-# System dependencies handled by packages.txt:
-# tesseract-ocr
-# poppler-utils
-# libmagic1
-# libgl1-mesa-glx
-
+# Other utilities
 joblib>=1.3.2

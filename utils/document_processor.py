@@ -42,15 +42,16 @@ def process_pdfs_with_unstructured(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
-                # Extract content using partition_pdf with simplified settings
+                # Extract content with OCR enabled
                 chunks = partition_pdf(
                     filename=pdf_path,
-                    strategy="hi_res",
+                    strategy="hi_res",  # Better for OCR
                     infer_table_structure=True,
-                    extract_images=True,
                     include_metadata=True,
-                    encoding="utf-8",
-                    use_ocr=False  # Disable OCR for now
+                    extract_images=True,
+                    ocr_languages=['eng'],
+                    pdf_image_dpi=300,  # Higher DPI for better OCR
+                    use_ocr=True
                 )
                 
                 # Log chunk details for debugging
@@ -66,27 +67,14 @@ def process_pdfs_with_unstructured(pdf_paths):
                     logger.info(f"Processing chunk of type: {chunk_type}")
                     
                     try:
-                        # Handle tables (check for both Table and TableChunk types)
-                        if any(table_type in chunk_type for table_type in ["Table", "TableChunk"]):
-                            if hasattr(chunk, 'text') and chunk.text.strip():
-                                pdf_tables.append(chunk)
-                                logger.info(f"Added table chunk: {len(chunk.text)} chars")
-                        
-                        # Handle text (including narrative text and headers)
-                        elif hasattr(chunk, 'text') and chunk.text.strip():
+                        # Handle tables
+                        if "Table" in chunk_type and hasattr(chunk, 'text'):
+                            pdf_tables.append(chunk)
+                            logger.info(f"Added table chunk: {len(chunk.text)} chars")
+                        # Handle text
+                        elif hasattr(chunk, 'text'):
                             pdf_texts.append(chunk)
                             logger.info(f"Added text chunk: {len(chunk.text)} chars")
-                        
-                        # Handle images (check multiple metadata paths)
-                        if hasattr(chunk, 'metadata'):
-                            try:
-                                metadata = dict(chunk.metadata)
-                                if 'image_base64' in metadata:
-                                    pdf_images.append(metadata['image_base64'])
-                                    logger.info("Added image from metadata")
-                            except Exception as meta_error:
-                                logger.warning(f"Could not process metadata: {meta_error}")
-                    
                     except Exception as chunk_error:
                         logger.warning(f"Error processing chunk: {chunk_error}")
                         continue
@@ -94,21 +82,19 @@ def process_pdfs_with_unstructured(pdf_paths):
                 # Add to collections
                 all_texts.extend(pdf_texts)
                 all_tables.extend(pdf_tables)
-                all_images.extend(pdf_images)
                 
                 logger.info(f"Processed {pdf_path}:")
                 logger.info(f"- Texts: {len(pdf_texts)}")
                 logger.info(f"- Tables: {len(pdf_tables)}")
-                logger.info(f"- Images: {len(pdf_images)}")
                 
             except Exception as e:
                 logger.error(f"Error in unstructured processing: {str(e)}")
                 logger.error(traceback.format_exc())
                 return [], [], []  # Return empty lists to trigger fallback
         
-        status.update(label=f"PDF processing complete! Extracted {len(all_texts)} text chunks, {len(all_tables)} tables, {len(all_images)} images.", state="complete")
+        status.update(label=f"PDF processing complete! Extracted {len(all_texts)} text chunks, {len(all_tables)} tables.", state="complete")
     
-    return all_texts, all_tables, all_images
+    return all_texts, all_tables, []  # Return empty list for images
 
 def get_pdf_text_fallback(pdf_paths):
     """Fallback method using PyPDF2"""
