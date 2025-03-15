@@ -12,7 +12,8 @@ joblib
 langchain-chroma
 
 # PDF processing
-unstructured[all]
+unstructured[all-docs]
+pi-heif
 python-magic
 pillow
 pdf2image
