@@ -36,15 +36,18 @@ def process_pdfs_with_unstructured(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
-                # Extract content using partition_pdf
+                # Extract content using partition_pdf with different settings
                 chunks = partition_pdf(
                     filename=pdf_path,
-                    strategy="hi_res",
+                    strategy="fast",  # Try fast instead of hi_res
                     infer_table_structure=True,
-                    extract_images=True,  # Simplified image extraction
-                    chunking_strategy="by_title",
-                    max_characters=2000,
-                    new_after_n_chars=1500
+                    extract_images=True,
+                    include_metadata=True,
+                    encoding="utf-8",
+                    ocr_languages=['eng'],  # Add OCR support
+                    pdf_image_dpi=300,  # Higher DPI
+                    max_partition=20000,  # Larger partition size
+                    split_table_columns=False  # Simpler table handling
                 )
                 
                 # Log chunk details for debugging
@@ -66,7 +69,7 @@ def process_pdfs_with_unstructured(pdf_paths):
                                 pdf_tables.append(chunk)
                                 logger.info("Added table chunk")
                         
-                        # Handle text
+                        # Handle text (including narrative text and headers)
                         elif hasattr(chunk, 'text') and chunk.text.strip():
                             pdf_texts.append(chunk)
                             logger.info(f"Added text chunk with length {len(chunk.text)}")
@@ -74,7 +77,7 @@ def process_pdfs_with_unstructured(pdf_paths):
                         # Handle images
                         if hasattr(chunk, 'metadata'):
                             try:
-                                metadata = dict(chunk.metadata)  # Convert ElementMetadata to dict
+                                metadata = dict(chunk.metadata)
                                 if 'image_base64' in metadata:
                                     pdf_images.append(metadata['image_base64'])
                                     logger.info("Added image chunk")
