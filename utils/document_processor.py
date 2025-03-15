@@ -39,10 +39,9 @@ def process_pdfs_with_unstructured(pdf_paths):
                 # Extract content using partition_pdf
                 chunks = partition_pdf(
                     filename=pdf_path,
-                    strategy="hi_res",  # Back to hi_res
+                    strategy="hi_res",
                     infer_table_structure=True,
-                    extract_image_block_types=["Image"],  # Add this back
-                    extract_image_block_to_payload=True,  # Add this back
+                    extract_images=True,  # Simplified image extraction
                     chunking_strategy="by_title",
                     max_characters=2000,
                     new_after_n_chars=1500
@@ -50,10 +49,6 @@ def process_pdfs_with_unstructured(pdf_paths):
                 
                 # Log chunk details for debugging
                 logger.info(f"Extracted {len(chunks)} chunks")
-                for chunk in chunks:
-                    logger.info(f"Chunk type: {type(chunk)}")
-                    if hasattr(chunk, 'text'):
-                        logger.info(f"Text length: {len(chunk.text)}")
                 
                 # Process chunks
                 pdf_tables = []
@@ -61,23 +56,34 @@ def process_pdfs_with_unstructured(pdf_paths):
                 pdf_images = []
                 
                 for chunk in chunks:
-                    if "Table" in str(type(chunk)):
-                        pdf_tables.append(chunk)
-                        logger.info("Found table chunk")
-                    elif "CompositeElement" in str(type(chunk)):
-                        pdf_texts.append(chunk)
-                        logger.info("Found text chunk")
-                
-                # Get images from CompositeElements
-                for chunk in chunks:
-                    if "CompositeElement" in str(type(chunk)):
-                        if hasattr(chunk, 'metadata') and hasattr(chunk.metadata, 'orig_elements'):
-                            chunk_els = chunk.metadata.orig_elements
-                            for el in chunk_els:
-                                if "Image" in str(type(el)):
-                                    if hasattr(el, 'metadata') and hasattr(el.metadata, 'image_base64'):
-                                        pdf_images.append(el.metadata.image_base64)
-                                        logger.info("Found image chunk")
+                    chunk_type = str(type(chunk))
+                    logger.info(f"Processing chunk of type: {chunk_type}")
+                    
+                    try:
+                        # Handle tables
+                        if "Table" in chunk_type:
+                            if hasattr(chunk, 'text') and chunk.text.strip():
+                                pdf_tables.append(chunk)
+                                logger.info("Added table chunk")
+                        
+                        # Handle text
+                        elif hasattr(chunk, 'text') and chunk.text.strip():
+                            pdf_texts.append(chunk)
+                            logger.info(f"Added text chunk with length {len(chunk.text)}")
+                        
+                        # Handle images
+                        if hasattr(chunk, 'metadata'):
+                            try:
+                                metadata = dict(chunk.metadata)  # Convert ElementMetadata to dict
+                                if 'image_base64' in metadata:
+                                    pdf_images.append(metadata['image_base64'])
+                                    logger.info("Added image chunk")
+                            except Exception as meta_error:
+                                logger.warning(f"Could not process metadata: {meta_error}")
+                    
+                    except Exception as chunk_error:
+                        logger.warning(f"Error processing chunk: {chunk_error}")
+                        continue
                 
                 # Add to collections
                 all_texts.extend(pdf_texts)
@@ -88,7 +94,7 @@ def process_pdfs_with_unstructured(pdf_paths):
                 
             except Exception as e:
                 logger.error(f"Error in unstructured processing: {str(e)}")
-                logger.error(traceback.format_exc())  # Add full traceback
+                logger.error(traceback.format_exc())
                 return [], [], []  # Return empty lists to trigger fallback
         
         status.update(label=f"PDF processing complete! Extracted {len(all_texts)} text chunks, {len(all_tables)} tables, {len(all_images)} images.", state="complete")
