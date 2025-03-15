@@ -37,11 +37,13 @@ def process_pdfs_with_unstructured(pdf_paths):
                 # Extract content using the same parameters as the example
                 chunks = partition_pdf(
                     filename=pdf_path,
-                    strategy="hi_res",
+                    strategy="fast",
                     infer_table_structure=True,
                     chunking_strategy="by_title",
-                    max_characters=2000,
-                    new_after_n_chars=1500
+                    max_characters=4000,
+                    new_after_n_chars=3000,
+                    include_metadata=True,
+                    ocr_languages=['eng']
                 )
                 logger.info(f"Successfully extracted {len(chunks)} chunks from {pdf_path}")
                 
@@ -50,10 +52,17 @@ def process_pdfs_with_unstructured(pdf_paths):
                 pdf_texts = []
                 
                 for chunk in chunks:
-                    if "Table" in str(type(chunk)):
-                        pdf_tables.append(chunk)
-                    if "CompositeElement" in str(type(chunk)):
-                        pdf_texts.append(chunk)
+                    # Print chunk type for debugging
+                    logger.info(f"Found chunk of type: {type(chunk)}")
+                    
+                    if hasattr(chunk, 'text') and chunk.text.strip():
+                        if "Table" in str(type(chunk)):
+                            pdf_tables.append(chunk)
+                        else:
+                            pdf_texts.append(chunk)
+                        
+                        # Log content for debugging
+                        logger.info(f"Extracted text length: {len(chunk.text)}")
                 
                 # Get images from CompositeElements like the example
                 pdf_images = []
