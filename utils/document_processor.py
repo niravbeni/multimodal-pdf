@@ -9,6 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain.schema.document import Document
 import logging
+import subprocess
 
 # At the top of the file, add debug logging
 logging.basicConfig(level=logging.INFO)
@@ -30,9 +31,27 @@ except Exception as e:
     logger.error(f"Failed to import Unstructured: {str(e)}")
     logger.error(f"Full traceback: {traceback.format_exc()}")
 
+def check_tesseract():
+    """Check if tesseract is installed and in PATH"""
+    try:
+        subprocess.run(['tesseract', '--version'], capture_output=True, check=True)
+        logger.info("Tesseract is installed and accessible")
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.error(f"Tesseract check failed: {str(e)}")
+        return False
+
 def process_pdfs_with_unstructured(pdf_paths):
     """Process PDFs using Unstructured following the example approach"""
     logger.info(f"Starting PDF processing with Unstructured. Paths: {pdf_paths}")
+    
+    # Check tesseract installation
+    if not check_tesseract():
+        logger.error("Tesseract not found - falling back to non-OCR mode")
+        use_ocr = False
+    else:
+        use_ocr = True
+    
     all_texts = []
     all_tables = []
     all_images = []
@@ -42,16 +61,16 @@ def process_pdfs_with_unstructured(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
-                # Extract content with OCR enabled
+                # Extract content with OCR if available
                 chunks = partition_pdf(
                     filename=pdf_path,
-                    strategy="hi_res",  # Better for OCR
+                    strategy="hi_res",
                     infer_table_structure=True,
                     include_metadata=True,
                     extract_images=True,
-                    ocr_languages=['eng'],
-                    pdf_image_dpi=300,  # Higher DPI for better OCR
-                    use_ocr=True
+                    ocr_languages=['eng'] if use_ocr else None,
+                    pdf_image_dpi=300,
+                    use_ocr=use_ocr
                 )
                 
                 # Log chunk details for debugging
