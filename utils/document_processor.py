@@ -34,12 +34,21 @@ except Exception as e:
 def check_tesseract():
     """Check if tesseract is installed and in PATH"""
     try:
+        # First try direct command
         subprocess.run(['tesseract', '--version'], capture_output=True, check=True)
         logger.info("Tesseract is installed and accessible")
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        logger.error(f"Tesseract check failed: {str(e)}")
-        return False
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # Try with full path
+        try:
+            subprocess.run(['/usr/bin/tesseract', '--version'], capture_output=True, check=True)
+            logger.info("Tesseract found in /usr/bin")
+            # Add to PATH
+            os.environ['PATH'] = f"/usr/bin:{os.environ.get('PATH', '')}"
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logger.error(f"Tesseract check failed: {str(e)}")
+            return False
 
 def process_pdfs_with_unstructured(pdf_paths):
     """Process PDFs using Unstructured following the example approach"""
