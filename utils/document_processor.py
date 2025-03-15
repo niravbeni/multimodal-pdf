@@ -42,20 +42,17 @@ def process_pdfs_with_unstructured(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
-                # Extract content using partition_pdf with settings for local-inference
+                # Extract content using partition_pdf with simplified settings
                 chunks = partition_pdf(
                     filename=pdf_path,
-                    strategy="hi_res",  # Back to hi_res for better detection
+                    strategy="hi_res",
                     infer_table_structure=True,
                     extract_images=True,
                     include_metadata=True,
                     encoding="utf-8",
                     ocr_languages=['eng'],
                     pdf_image_dpi=300,
-                    model_name="local",  # Specify local model
-                    use_ocr=True,  # Enable OCR
-                    detect_tables=True,  # Explicitly enable table detection
-                    extract_image_blocks=True  # Explicitly enable image extraction
+                    use_ocr=True
                 )
                 
                 # Log chunk details for debugging
@@ -85,26 +82,12 @@ def process_pdfs_with_unstructured(pdf_paths):
                         # Handle images (check multiple metadata paths)
                         if hasattr(chunk, 'metadata'):
                             try:
-                                # Try direct metadata access
-                                if hasattr(chunk.metadata, 'image_base64'):
-                                    pdf_images.append(chunk.metadata.image_base64)
-                                    logger.info("Added image from direct metadata")
-                                # Try dict conversion
-                                else:
-                                    metadata = dict(chunk.metadata)
-                                    if 'image_base64' in metadata:
-                                        pdf_images.append(metadata['image_base64'])
-                                        logger.info("Added image from dict metadata")
-                                    # Check for image path
-                                    elif 'image_path' in metadata:
-                                        logger.info(f"Found image path: {metadata['image_path']}")
+                                metadata = dict(chunk.metadata)
+                                if 'image_base64' in metadata:
+                                    pdf_images.append(metadata['image_base64'])
+                                    logger.info("Added image from metadata")
                             except Exception as meta_error:
                                 logger.warning(f"Could not process metadata: {meta_error}")
-                        
-                        # Check for image source attribute
-                        if hasattr(chunk, 'image_source'):
-                            pdf_images.append(chunk.image_source)
-                            logger.info("Added image from image_source")
                     
                     except Exception as chunk_error:
                         logger.warning(f"Error processing chunk: {chunk_error}")
