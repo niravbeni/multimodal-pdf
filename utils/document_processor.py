@@ -10,7 +10,6 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.schema.document import Document
 import logging
 import subprocess
-from unstructured_client import UnstructuredClient
 
 # At the top of the file, add debug logging
 logging.basicConfig(level=logging.INFO)
@@ -23,13 +22,18 @@ try:
     from unstructured.partition.auto import partition
     from unstructured.documents.elements import Text, Title, NarrativeText, Table
     
-    # Test if we can access key functionality
-    logger.info("Testing Unstructured functionality...")
-    UNSTRUCTURED_AVAILABLE = True
-    logger.info("Unstructured successfully imported and tested")
+    # Test if we can actually use the functionality
+    logger.info("Testing Unstructured functionality with a simple text...")
+    test_elements = partition(text="This is a test")
+    if len(test_elements) > 0:
+        UNSTRUCTURED_AVAILABLE = True
+        logger.info("Unstructured successfully imported and tested")
+    else:
+        UNSTRUCTURED_AVAILABLE = False
+        logger.error("Unstructured test failed - no elements returned")
 except Exception as e:
     UNSTRUCTURED_AVAILABLE = False
-    logger.error(f"Failed to import Unstructured: {str(e)}")
+    logger.error(f"Failed to import/test Unstructured: {str(e)}")
     logger.error(f"Full traceback: {traceback.format_exc()}")
 
 def check_tesseract():
@@ -60,8 +64,10 @@ def process_pdfs_with_unstructured(pdf_paths):
     logger.info(f"Starting PDF processing with Unstructured. Paths: {pdf_paths}")
     
     if not UNSTRUCTURED_AVAILABLE:
-        logger.error("Unstructured is not available")
+        logger.error("Unstructured is not available - initialization failed")
         return [], [], []
+        
+    logger.info("Unstructured is available, proceeding with PDF processing")
     
     all_texts = []
     all_tables = []
