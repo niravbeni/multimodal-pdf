@@ -21,16 +21,32 @@ try:
     from unstructured.partition.pdf import partition_pdf
     from unstructured.partition.auto import partition
     from unstructured.documents.elements import Text, Title, NarrativeText, Table
+    import unstructured_inference  # Add explicit import to verify it's available
     
     # Test if we can actually use the functionality
-    logger.info("Testing Unstructured functionality with a simple text...")
-    test_elements = partition(text="This is a test")
-    if len(test_elements) > 0:
-        UNSTRUCTURED_AVAILABLE = True
-        logger.info("Unstructured successfully imported and tested")
-    else:
+    logger.info("Testing Unstructured PDF functionality...")
+    test_file = os.path.join(os.path.dirname(__file__), "test.pdf")
+    
+    # Create a simple test PDF
+    with open(test_file, "w") as f:
+        f.write("Test content")
+    
+    try:
+        test_elements = partition_pdf(filename=test_file)
+        if len(test_elements) > 0:
+            UNSTRUCTURED_AVAILABLE = True
+            logger.info(f"Unstructured successfully tested with PDF - got {len(test_elements)} elements")
+        else:
+            UNSTRUCTURED_AVAILABLE = False
+            logger.error("Unstructured test failed - no elements returned from PDF")
+    except Exception as pdf_error:
+        logger.error(f"PDF test failed: {str(pdf_error)}")
         UNSTRUCTURED_AVAILABLE = False
-        logger.error("Unstructured test failed - no elements returned")
+    finally:
+        # Clean up test file
+        if os.path.exists(test_file):
+            os.remove(test_file)
+            
 except Exception as e:
     UNSTRUCTURED_AVAILABLE = False
     logger.error(f"Failed to import/test Unstructured: {str(e)}")

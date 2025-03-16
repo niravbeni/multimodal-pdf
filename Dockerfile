@@ -11,7 +11,14 @@ RUN apt-get update && apt-get install -y \
     libheif-dev \
     python3-dev \
     build-essential \
+    pkg-config \
+    libpoppler-dev \
+    libpoppler-cpp-dev \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
+
+# Set TESSDATA_PREFIX environment variable
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 
 # Set up working directory
 WORKDIR /app
@@ -19,6 +26,11 @@ WORKDIR /app
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Verify installations
+RUN python -c "from unstructured.partition.pdf import partition_pdf; print('Unstructured PDF import successful')" && \
+    tesseract --version && \
+    python -c "import unstructured_inference; print('Unstructured inference import successful')"
 
 # Copy the rest of the application
 COPY . .
