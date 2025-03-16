@@ -59,11 +59,11 @@ def process_pdfs_with_unstructured(pdf_paths):
         logger.error("No Unstructured API key found in environment variables")
         return [], [], []  # Return empty lists to trigger fallback
     
-    # Initialize client with API key in headers
-    client = UnstructuredClient(
-        url="https://api.unstructured.io/general/v0/general",
-        headers={"unstructured-api-key": api_key}
-    )
+    # Initialize client
+    client = UnstructuredClient()
+    
+    # Set the API key in the client's configuration
+    client.api_key = api_key
     
     all_texts = []
     all_tables = []
