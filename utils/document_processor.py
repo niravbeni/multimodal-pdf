@@ -33,46 +33,26 @@ except Exception as e:
 
 def check_tesseract():
     """Check if tesseract is installed and in PATH"""
-    # Common tesseract locations
-    tesseract_paths = [
-        'tesseract',  # Default PATH
-        '/usr/bin/tesseract',
-        '/usr/local/bin/tesseract',
-        '/opt/homebrew/bin/tesseract',
-        '/opt/render/project/src/.apt/usr/bin/tesseract'  # Render-specific path
-    ]
-    
-    for path in tesseract_paths:
-        try:
-            result = subprocess.run([path, '--version'], capture_output=True, text=True)
-            logger.info(f"Tesseract found at {path}")
-            logger.info(f"Version info: {result.stdout}")
-            
-            # Add the directory to PATH
-            if '/' in path:
-                bin_dir = os.path.dirname(path)
-                os.environ['PATH'] = f"{bin_dir}:{os.environ.get('PATH', '')}"
-                logger.info(f"Added {bin_dir} to PATH")
-            
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            logger.debug(f"Tesseract not found at {path}: {str(e)}")
-            continue
-    
-    # If we get here, tesseract wasn't found
-    logger.error("Tesseract not found in any standard location")
-    
-    # Debug: Print current PATH
-    logger.info(f"Current PATH: {os.environ.get('PATH', '')}")
-    
-    # Debug: Try to find tesseract
     try:
-        which_result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True)
-        logger.info(f"which tesseract result: {which_result.stdout}")
+        # Check tessdata directory
+        tessdata_path = os.environ.get('TESSDATA_PREFIX', '/usr/local/share/tessdata')
+        if not os.path.exists(tessdata_path):
+            logger.error(f"Tessdata directory not found: {tessdata_path}")
+            return False
+            
+        # Check for eng.traineddata
+        eng_data = os.path.join(tessdata_path, 'eng.traineddata')
+        if not os.path.exists(eng_data):
+            logger.error(f"English language data not found: {eng_data}")
+            return False
+            
+        # Try to run tesseract
+        result = subprocess.run(['tesseract', '--version'], capture_output=True, text=True)
+        logger.info(f"Tesseract version: {result.stdout}")
+        return True
     except Exception as e:
-        logger.error(f"Error running 'which tesseract': {str(e)}")
-    
-    return False
+        logger.error(f"Tesseract check failed: {str(e)}")
+        return False
 
 def process_pdfs_with_unstructured(pdf_paths):
     """Process PDFs using Unstructured following the example approach"""
