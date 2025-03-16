@@ -53,7 +53,13 @@ def process_pdfs_with_unstructured(pdf_paths):
     """Process PDFs using Unstructured API"""
     logger.info(f"Starting PDF processing with Unstructured. Paths: {pdf_paths}")
     
-    client = UnstructuredClient(api_key=st.secrets.get("UNSTRUCTURED_API_KEY"))
+    # Get API key from environment variable instead of secrets
+    api_key = os.environ.get("UNSTRUCTURED_API_KEY")
+    if not api_key:
+        logger.error("No Unstructured API key found in environment variables")
+        return [], [], []  # Return empty lists to trigger fallback
+    
+    client = UnstructuredClient(api_key=api_key)
     
     all_texts = []
     all_tables = []
