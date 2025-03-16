@@ -11,6 +11,8 @@ chromadb>=0.4.18
 
 # PDF processing
 unstructured>=0.10.30
+pi-heif
+pillow-heif
 pdfminer.six>=20221105
 pdf2image>=1.16.3
 pypdfium2>=4.20.0

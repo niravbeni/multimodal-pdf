@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     poppler-utils \
     libmagic1 \
     ghostscript \
+    libheif-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory
