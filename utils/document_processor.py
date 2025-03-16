@@ -6,8 +6,11 @@ import traceback
 import streamlit as st
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.schema.document import Document
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 import logging
-from PyPDF2 import PdfReader  # Only need PdfReader for fallback
+import subprocess
+from PyPDF2 import PdfReader
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
