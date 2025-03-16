@@ -7,6 +7,17 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-eng \
     poppler-utils \
     libmagic1 \
+    libreoffice \
+    pandoc \
+    ghostscript \
+    libgl1-mesa-glx \
+    python3-dev \
+    build-essential \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory
@@ -14,7 +25,8 @@ WORKDIR /app
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir "unstructured[all]" && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
