@@ -17,6 +17,8 @@ services:
         value: /usr/local/share/tessdata
       - key: PATH
         value: /usr/local/bin:${PATH}
+      - key: UNSTRUCTURED_API_KEY
+        fromVariable: UNSTRUCTURED_API_KEY  # This will use the value from Render's environment variables
     disk:
       name: pdf-data
       mountPath: /data

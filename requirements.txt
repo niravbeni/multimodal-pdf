@@ -10,9 +10,7 @@ openai>=1.0.0
 chromadb>=0.4.18
 
 # PDF processing
-unstructured[local-inference]
-pdf2image
-python-magic
+unstructured[api]
 pillow
 PyPDF2>=3.0.0
 

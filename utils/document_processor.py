@@ -55,15 +55,8 @@ def check_tesseract():
         return False
 
 def process_pdfs_with_unstructured(pdf_paths):
-    """Process PDFs using Unstructured following the example approach"""
+    """Process PDFs using Unstructured API"""
     logger.info(f"Starting PDF processing with Unstructured. Paths: {pdf_paths}")
-    
-    # Check tesseract installation
-    if not check_tesseract():
-        logger.error("Tesseract not found - falling back to non-OCR mode")
-        use_ocr = False
-    else:
-        use_ocr = True
     
     all_texts = []
     all_tables = []
@@ -74,16 +67,15 @@ def process_pdfs_with_unstructured(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
-                # Extract content with OCR if available
+                # Extract content using partition_pdf with API
                 chunks = partition_pdf(
                     filename=pdf_path,
                     strategy="hi_res",
-                    infer_table_structure=True,
+                    api_key=st.secrets.get("UNSTRUCTURED_API_KEY"),  # Get from secrets
+                    api_url="https://api.unstructured.io/general/v0/general",
                     include_metadata=True,
-                    extract_images=True,
-                    ocr_languages=['eng'] if use_ocr else None,
+                    ocr_languages=['eng'],
                     pdf_image_dpi=300,
-                    use_ocr=use_ocr
                 )
                 
                 # Log chunk details for debugging
