@@ -10,8 +10,9 @@ openai>=1.0.0
 chromadb>=0.4.18
 
 # PDF processing
-unstructured>=0.10.30
+unstructured[all]
 unstructured-inference
+unstructured-pytesseract
 pi-heif
 pillow-heif
 pdfminer.six>=20221105

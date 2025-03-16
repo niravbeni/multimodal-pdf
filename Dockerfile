@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
 
 # Set TESSDATA_PREFIX environment variable
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
+ENV OCR_AGENT=pytesseract
 
 # Set up working directory
 WORKDIR /app
