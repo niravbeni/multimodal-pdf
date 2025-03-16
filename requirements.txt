@@ -10,7 +10,8 @@ openai>=1.0.0
 chromadb>=0.4.18
 
 # PDF processing
-unstructured[api]
+unstructured-api
+unstructured
 pdfminer.six
 pillow
 PyPDF2>=3.0.0
