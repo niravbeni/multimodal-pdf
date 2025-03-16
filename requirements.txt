@@ -11,6 +11,7 @@ chromadb>=0.4.18
 
 # PDF processing
 unstructured>=0.10.30
+unstructured-inference
 pi-heif
 pillow-heif
 pdfminer.six>=20221105
