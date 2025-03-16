@@ -10,6 +10,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.schema.document import Document
 import logging
 import subprocess
+from unstructured_client import UnstructuredClient
 
 # At the top of the file, add debug logging
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +59,8 @@ def process_pdfs_with_unstructured(pdf_paths):
     """Process PDFs using Unstructured API"""
     logger.info(f"Starting PDF processing with Unstructured. Paths: {pdf_paths}")
     
+    client = UnstructuredClient(api_key=st.secrets.get("UNSTRUCTURED_API_KEY"))
+    
     all_texts = []
     all_tables = []
     all_images = []
@@ -67,50 +70,55 @@ def process_pdfs_with_unstructured(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
-                # Extract content using partition_pdf with API settings
-                chunks = partition_pdf(
-                    filename=pdf_path,
-                    strategy="hi_res",  # Better for complex documents
-                    hi_res_model_name="chipper",  # Use the new Chipper model
-                    api_key=st.secrets.get("UNSTRUCTURED_API_KEY"),
-                    api_url="https://api.unstructured.io/general/v0/general",
-                    include_metadata=True,
-                    include_page_breaks=True,
-                    languages=['eng'],  # Using new languages parameter instead of ocr_languages
-                    pdf_image_dpi=300,
-                    chunking_strategy="by_title",
-                    max_characters=2000,
-                    new_after_n_chars=1500
-                )
+                # Process file using the client
+                with open(pdf_path, 'rb') as f:
+                    elements = client.general.partition(
+                        files=[f],
+                        strategy="hi_res",
+                        hi_res_model_name="chipper",
+                        include_metadata=True,
+                        include_page_breaks=True,
+                        languages=['eng'],
+                        pdf_image_dpi=300,
+                        chunking_strategy="by_title",
+                        max_characters=2000,
+                        new_after_n_chars=1500
+                    )
                 
-                # Log chunk details for debugging
-                logger.info(f"Extracted {len(chunks)} chunks")
+                # Log element details for debugging
+                logger.info(f"Extracted {len(elements)} elements")
                 
-                # Process chunks
+                # Process elements
                 pdf_tables = []
                 pdf_texts = []
                 pdf_images = []
                 
-                for chunk in chunks:
-                    chunk_type = str(type(chunk))
-                    logger.info(f"Processing chunk of type: {chunk_type}")
+                for element in elements:
+                    element_type = element.type
+                    logger.info(f"Processing element of type: {element_type}")
                     
                     try:
                         # Handle tables
-                        if "Table" in chunk_type and hasattr(chunk, 'text'):
-                            pdf_tables.append(chunk)
-                            logger.info(f"Added table chunk: {len(chunk.text)} chars")
+                        if element_type == "Table":
+                            pdf_tables.append(element)
+                            logger.info(f"Added table element: {len(element.text)} chars")
+                        # Handle images
+                        elif element_type == "Image":
+                            if hasattr(element, 'metadata') and 'image_base64' in element.metadata:
+                                pdf_images.append(element.metadata['image_base64'])
+                                logger.info("Added image element")
                         # Handle text
-                        elif hasattr(chunk, 'text'):
-                            pdf_texts.append(chunk)
-                            logger.info(f"Added text chunk: {len(chunk.text)} chars")
-                    except Exception as chunk_error:
-                        logger.warning(f"Error processing chunk: {chunk_error}")
+                        else:
+                            pdf_texts.append(element)
+                            logger.info(f"Added text element: {len(element.text)} chars")
+                    except Exception as element_error:
+                        logger.warning(f"Error processing element: {element_error}")
                         continue
                 
                 # Add to collections
                 all_texts.extend(pdf_texts)
                 all_tables.extend(pdf_tables)
+                all_images.extend(pdf_images)
                 
                 logger.info(f"Processed {pdf_path}:")
                 logger.info(f"- Texts: {len(pdf_texts)}")
@@ -123,7 +131,7 @@ def process_pdfs_with_unstructured(pdf_paths):
         
         status.update(label=f"PDF processing complete! Extracted {len(all_texts)} text chunks, {len(all_tables)} tables.", state="complete")
     
-    return all_texts, all_tables, []  # Return empty list for images
+    return all_texts, all_tables, all_images
 
 def get_pdf_text_fallback(pdf_paths):
     """Fallback method using PyPDF2"""

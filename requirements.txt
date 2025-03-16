@@ -10,7 +10,7 @@ openai>=1.0.0
 chromadb>=0.4.18
 
 # PDF processing
-unstructured>=0.11.0  # Version that supports API and Chipper model
+unstructured-client  # Use the lightweight client-only package
 pdfminer.six
 pillow
 PyPDF2>=3.0.0
