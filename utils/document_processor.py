@@ -16,20 +16,14 @@ from unstructured_client import UnstructuredClient
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Check if Unstructured is available
+# Initialize the client
 try:
-    logger.info("Attempting to import Unstructured...")
-    from unstructured.partition.pdf import partition_pdf
-    from unstructured.partition.auto import partition
-    from unstructured.documents.elements import Text, Title, NarrativeText, Table
-    
-    # Test if we can access key functionality
-    logger.info("Testing Unstructured functionality...")
+    logger.info("Attempting to initialize Unstructured client...")
     UNSTRUCTURED_AVAILABLE = True
-    logger.info("Unstructured successfully imported and tested")
+    logger.info("Unstructured client successfully initialized")
 except Exception as e:
     UNSTRUCTURED_AVAILABLE = False
-    logger.error(f"Failed to import Unstructured: {str(e)}")
+    logger.error(f"Failed to initialize Unstructured client: {str(e)}")
     logger.error(f"Full traceback: {traceback.format_exc()}")
 
 def check_tesseract():
