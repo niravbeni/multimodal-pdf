@@ -77,7 +77,7 @@ def process_pdfs_with_unstructured(pdf_paths):
                 # Process file using the client
                 with open(pdf_path, 'rb') as f:
                     elements = client.general.partition(
-                        files=[f],
+                        file=f,
                         strategy="hi_res",
                         hi_res_model_name="chipper",
                         include_metadata=True,
