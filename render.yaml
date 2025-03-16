@@ -1,24 +1,12 @@
 services:
   - type: web
     name: multimodal-pdf-chat
-    env: python
-    buildCommand: |
-      # Make setup script executable and run it
-      chmod +x setup.sh
-      ./setup.sh
-      # Install Python dependencies
-      pip install -r requirements.txt
-    startCommand: streamlit run app.py
+    env: docker
+    dockerfilePath: ./Dockerfile
     plan: starter
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.9.12
-      - key: TESSDATA_PREFIX
-        value: /usr/local/share/tessdata
-      - key: PATH
-        value: /usr/local/bin:${PATH}
-      - key: UNSTRUCTURED_API_KEY
-        fromVariable: UNSTRUCTURED_API_KEY  # This will use the value from Render's environment variables
+      - key: OPENAI_API_KEY
+        fromVariable: OPENAI_API_KEY
     disk:
       name: pdf-data
       mountPath: /data
