@@ -14,6 +14,8 @@ unstructured[api]
 pdfminer.six
 pillow
 PyPDF2>=3.0.0
+pi-heif
+pillow-heif
 
 # Other utilities
 joblib>=1.3.2
