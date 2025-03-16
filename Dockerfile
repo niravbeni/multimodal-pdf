@@ -25,8 +25,17 @@ WORKDIR /app
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir "unstructured[all]" && \
+RUN pip install --no-cache-dir "unstructured[all]" "unstructured[pdf]" && \
     pip install --no-cache-dir -r requirements.txt
+
+# Install additional PDF dependencies
+RUN pip install --no-cache-dir \
+    "pdfminer.six>=20221105" \
+    "pdf2image>=1.16.3" \
+    "pypdfium2>=4.20.0" \
+    "pypdf>=3.17.1" \
+    "pdfplumber>=0.10.2" \
+    "detectron2@git+https://github.com/facebookresearch/detectron2.git@v0.6#egg=detectron2"
 
 # Copy the rest of the application
 COPY . .

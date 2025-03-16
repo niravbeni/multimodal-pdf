@@ -67,15 +67,36 @@ def process_pdfs_with_unstructured(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
-                # Process file using partition
-                elements = partition(
-                    filename=pdf_path,
-                    strategy="fast",  # Use fast strategy for better performance
-                    include_metadata=True
-                )
+                # Verify file exists and is readable
+                if not os.path.exists(pdf_path):
+                    logger.error(f"File not found: {pdf_path}")
+                    continue
+                    
+                logger.info(f"File size: {os.path.getsize(pdf_path)} bytes")
+                
+                # Process file using partition with detailed logging
+                logger.info("Starting partition with these settings:")
+                logger.info(f"- Strategy: fast")
+                logger.info(f"- Include metadata: True")
+                
+                try:
+                    elements = partition(
+                        filename=pdf_path,
+                        strategy="fast",
+                        include_metadata=True,
+                        include_page_breaks=True,
+                        encoding='utf-8'
+                    )
+                    logger.info(f"Partition successful, got {len(elements)} elements")
+                except Exception as partition_error:
+                    logger.error(f"Partition failed: {str(partition_error)}")
+                    logger.error(traceback.format_exc())
+                    raise partition_error
                 
                 # Log element details for debugging
                 logger.info(f"Extracted {len(elements)} elements")
+                for idx, element in enumerate(elements):
+                    logger.info(f"Element {idx}: type={type(element)}, has_text={hasattr(element, 'text')}")
                 
                 # Process elements
                 pdf_tables = []
