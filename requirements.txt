@@ -11,6 +11,7 @@ chromadb>=0.4.18
 
 # PDF processing
 unstructured[api]
+pdfminer.six
 pillow
 PyPDF2>=3.0.0
 
