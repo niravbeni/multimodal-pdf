@@ -10,13 +10,10 @@ openai>=1.0.0
 chromadb>=0.4.18
 
 # PDF processing
-unstructured-api
-unstructured
+unstructured>=0.11.0  # Version that supports API and Chipper model
 pdfminer.six
 pillow
 PyPDF2>=3.0.0
-pi-heif
-pillow-heif
 
 # Other utilities
 joblib>=1.3.2

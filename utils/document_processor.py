@@ -67,15 +67,20 @@ def process_pdfs_with_unstructured(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
-                # Extract content using partition_pdf with API
+                # Extract content using partition_pdf with API settings
                 chunks = partition_pdf(
                     filename=pdf_path,
-                    strategy="hi_res",
-                    api_key=st.secrets.get("UNSTRUCTURED_API_KEY"),  # Get from secrets
+                    strategy="hi_res",  # Better for complex documents
+                    hi_res_model_name="chipper",  # Use the new Chipper model
+                    api_key=st.secrets.get("UNSTRUCTURED_API_KEY"),
                     api_url="https://api.unstructured.io/general/v0/general",
                     include_metadata=True,
-                    ocr_languages=['eng'],
+                    include_page_breaks=True,
+                    languages=['eng'],  # Using new languages parameter instead of ocr_languages
                     pdf_image_dpi=300,
+                    chunking_strategy="by_title",
+                    max_characters=2000,
+                    new_after_n_chars=1500
                 )
                 
                 # Log chunk details for debugging
