@@ -10,7 +10,7 @@ openai>=1.0.0
 chromadb>=0.4.18
 
 # PDF processing
-unstructured-client  # Use the lightweight client-only package
+unstructured[local-inference]
 pdfminer.six
 pillow
 PyPDF2>=3.0.0

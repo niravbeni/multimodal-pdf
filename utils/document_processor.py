@@ -16,14 +16,19 @@ from unstructured_client import UnstructuredClient
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize the client
+# Check if Unstructured is available
 try:
-    logger.info("Attempting to initialize Unstructured client...")
+    logger.info("Attempting to import Unstructured...")
+    from unstructured.partition.auto import partition
+    from unstructured.documents.elements import Text, Title, NarrativeText, Table
+    
+    # Test if we can access key functionality
+    logger.info("Testing Unstructured functionality...")
     UNSTRUCTURED_AVAILABLE = True
-    logger.info("Unstructured client successfully initialized")
+    logger.info("Unstructured successfully imported and tested")
 except Exception as e:
     UNSTRUCTURED_AVAILABLE = False
-    logger.error(f"Failed to initialize Unstructured client: {str(e)}")
+    logger.error(f"Failed to import Unstructured: {str(e)}")
     logger.error(f"Full traceback: {traceback.format_exc()}")
 
 def check_tesseract():
@@ -50,20 +55,8 @@ def check_tesseract():
         return False
 
 def process_pdfs_with_unstructured(pdf_paths):
-    """Process PDFs using Unstructured API"""
+    """Process PDFs using Unstructured"""
     logger.info(f"Starting PDF processing with Unstructured. Paths: {pdf_paths}")
-    
-    # Get API key from environment variable instead of secrets
-    api_key = os.environ.get("UNSTRUCTURED_API_KEY")
-    if not api_key:
-        logger.error("No Unstructured API key found in environment variables")
-        return [], [], []  # Return empty lists to trigger fallback
-    
-    # Initialize client
-    client = UnstructuredClient()
-    
-    # Set the API key in the client's configuration
-    client.api_key = api_key
     
     all_texts = []
     all_tables = []
@@ -74,20 +67,12 @@ def process_pdfs_with_unstructured(pdf_paths):
             try:
                 logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
-                # Process file using the client
-                with open(pdf_path, 'rb') as f:
-                    elements = client.general.partition(
-                        file=f,
-                        strategy="hi_res",
-                        hi_res_model_name="chipper",
-                        include_metadata=True,
-                        include_page_breaks=True,
-                        languages=['eng'],
-                        pdf_image_dpi=300,
-                        chunking_strategy="by_title",
-                        max_characters=2000,
-                        new_after_n_chars=1500
-                    )
+                # Process file using partition
+                elements = partition(
+                    filename=pdf_path,
+                    strategy="fast",  # Use fast strategy for better performance
+                    include_metadata=True
+                )
                 
                 # Log element details for debugging
                 logger.info(f"Extracted {len(elements)} elements")
@@ -98,21 +83,20 @@ def process_pdfs_with_unstructured(pdf_paths):
                 pdf_images = []
                 
                 for element in elements:
-                    element_type = element.type
+                    element_type = str(type(element))
                     logger.info(f"Processing element of type: {element_type}")
                     
                     try:
                         # Handle tables
-                        if element_type == "Table":
+                        if "Table" in element_type and hasattr(element, 'text'):
                             pdf_tables.append(element)
                             logger.info(f"Added table element: {len(element.text)} chars")
                         # Handle images
-                        elif element_type == "Image":
-                            if hasattr(element, 'metadata') and 'image_base64' in element.metadata:
-                                pdf_images.append(element.metadata['image_base64'])
-                                logger.info("Added image element")
+                        elif hasattr(element, 'metadata') and element.metadata.get('image_base64'):
+                            pdf_images.append(element.metadata['image_base64'])
+                            logger.info("Added image element")
                         # Handle text
-                        else:
+                        elif hasattr(element, 'text'):
                             pdf_texts.append(element)
                             logger.info(f"Added text element: {len(element.text)} chars")
                     except Exception as element_error:
@@ -127,13 +111,14 @@ def process_pdfs_with_unstructured(pdf_paths):
                 logger.info(f"Processed {pdf_path}:")
                 logger.info(f"- Texts: {len(pdf_texts)}")
                 logger.info(f"- Tables: {len(pdf_tables)}")
+                logger.info(f"- Images: {len(pdf_images)}")
                 
             except Exception as e:
                 logger.error(f"Error in unstructured processing: {str(e)}")
                 logger.error(traceback.format_exc())
                 return [], [], []  # Return empty lists to trigger fallback
         
-        status.update(label=f"PDF processing complete! Extracted {len(all_texts)} text chunks, {len(all_tables)} tables.", state="complete")
+        status.update(label=f"PDF processing complete! Extracted {len(all_texts)} text chunks, {len(all_tables)} tables, {len(all_images)} images.", state="complete")
     
     return all_texts, all_tables, all_images
 
