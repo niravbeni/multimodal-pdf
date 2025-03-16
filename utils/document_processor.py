@@ -10,6 +10,9 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.schema.document import Document
 import logging
 import subprocess
+from PyPDF2 import PdfWriter, PdfReader
+from io import BytesIO
+from reportlab.pdfgen import canvas
 
 # At the top of the file, add debug logging
 logging.basicConfig(level=logging.INFO)
@@ -21,18 +24,29 @@ try:
     from unstructured.partition.pdf import partition_pdf
     from unstructured.partition.auto import partition
     from unstructured.documents.elements import Text, Title, NarrativeText, Table
-    import unstructured_inference  # Add explicit import to verify it's available
+    import unstructured_inference
     
     # Test if we can actually use the functionality
     logger.info("Testing Unstructured PDF functionality...")
     test_file = os.path.join(os.path.dirname(__file__), "test.pdf")
     
-    # Create a simple test PDF
-    with open(test_file, "w") as f:
-        f.write("Test content")
+    # Create a valid PDF using reportlab
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer)
+    c.drawString(100, 750, "Test content")
+    c.save()
+    buffer.seek(0)
+    
+    # Write the PDF to file
+    with open(test_file, 'wb') as f:
+        f.write(buffer.getvalue())
     
     try:
-        test_elements = partition_pdf(filename=test_file)
+        test_elements = partition_pdf(
+            filename=test_file,
+            strategy="hi_res",  # Use hi_res strategy for testing
+            include_metadata=True
+        )
         if len(test_elements) > 0:
             UNSTRUCTURED_AVAILABLE = True
             logger.info(f"Unstructured successfully tested with PDF - got {len(test_elements)} elements")
@@ -41,6 +55,7 @@ try:
             logger.error("Unstructured test failed - no elements returned from PDF")
     except Exception as pdf_error:
         logger.error(f"PDF test failed: {str(pdf_error)}")
+        logger.error(traceback.format_exc())
         UNSTRUCTURED_AVAILABLE = False
     finally:
         # Clean up test file
@@ -172,8 +187,6 @@ def process_pdfs_with_unstructured(pdf_paths):
 
 def get_pdf_text_fallback(pdf_paths):
     """Fallback method using PyPDF2"""
-    from PyPDF2 import PdfReader
-    
     all_docs = []
     with st.status("Processing PDFs using fallback method...") as status:
         for i, pdf_path in enumerate(pdf_paths):

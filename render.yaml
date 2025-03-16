@@ -3,7 +3,7 @@ services:
     name: multimodal-pdf-chat
     env: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: standard
     envVars:
       - key: OPENAI_API_KEY
         fromVariable: OPENAI_API_KEY
