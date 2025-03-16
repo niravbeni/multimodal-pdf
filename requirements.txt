@@ -10,13 +10,13 @@ openai>=1.0.0
 chromadb>=0.4.18
 
 # PDF processing
-unstructured[all]
-unstructured[pdf]
+unstructured[all-deps]
 pdfminer.six>=20221105
 pdf2image>=1.16.3
 pypdfium2>=4.20.0
 pypdf>=3.17.1
 pdfplumber>=0.10.2
+PyPDF2>=3.0.0
 pillow
 
 # Other utilities

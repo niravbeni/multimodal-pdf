@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # Check if Unstructured is available
 try:
     logger.info("Attempting to import Unstructured...")
+    from unstructured.partition.pdf import partition_pdf
     from unstructured.partition.auto import partition
     from unstructured.documents.elements import Text, Title, NarrativeText, Table
     
@@ -58,6 +59,10 @@ def process_pdfs_with_unstructured(pdf_paths):
     """Process PDFs using Unstructured"""
     logger.info(f"Starting PDF processing with Unstructured. Paths: {pdf_paths}")
     
+    if not UNSTRUCTURED_AVAILABLE:
+        logger.error("Unstructured is not available")
+        return [], [], []
+    
     all_texts = []
     all_tables = []
     all_images = []
@@ -74,13 +79,13 @@ def process_pdfs_with_unstructured(pdf_paths):
                     
                 logger.info(f"File size: {os.path.getsize(pdf_path)} bytes")
                 
-                # Process file using partition with detailed logging
+                # Process file using partition_pdf with detailed logging
                 logger.info("Starting partition with these settings:")
                 logger.info(f"- Strategy: fast")
                 logger.info(f"- Include metadata: True")
                 
                 try:
-                    elements = partition(
+                    elements = partition_pdf(
                         filename=pdf_path,
                         strategy="fast",
                         include_metadata=True,
