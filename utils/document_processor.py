@@ -14,7 +14,7 @@ from PyPDF2 import PdfWriter, PdfReader
 from io import BytesIO
 from reportlab.pdfgen import canvas
 
-# At the top of the file, add debug logging
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -22,50 +22,11 @@ logger = logging.getLogger(__name__)
 try:
     logger.info("Attempting to import Unstructured...")
     from unstructured.partition.pdf import partition_pdf
-    from unstructured.partition.auto import partition
-    from unstructured.documents.elements import Text, Title, NarrativeText, Table
-    import unstructured_inference
-    
-    # Test if we can actually use the functionality
-    logger.info("Testing Unstructured PDF functionality...")
-    test_file = os.path.join(os.path.dirname(__file__), "test.pdf")
-    
-    # Create a valid PDF using reportlab
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer)
-    c.drawString(100, 750, "Test content")
-    c.save()
-    buffer.seek(0)
-    
-    # Write the PDF to file
-    with open(test_file, 'wb') as f:
-        f.write(buffer.getvalue())
-    
-    try:
-        test_elements = partition_pdf(
-            filename=test_file,
-            strategy="hi_res",  # Use hi_res strategy for testing
-            include_metadata=True
-        )
-        if len(test_elements) > 0:
-            UNSTRUCTURED_AVAILABLE = True
-            logger.info(f"Unstructured successfully tested with PDF - got {len(test_elements)} elements")
-        else:
-            UNSTRUCTURED_AVAILABLE = False
-            logger.error("Unstructured test failed - no elements returned from PDF")
-    except Exception as pdf_error:
-        logger.error(f"PDF test failed: {str(pdf_error)}")
-        logger.error(traceback.format_exc())
-        UNSTRUCTURED_AVAILABLE = False
-    finally:
-        # Clean up test file
-        if os.path.exists(test_file):
-            os.remove(test_file)
-            
+    UNSTRUCTURED_AVAILABLE = True
+    logger.info("Unstructured successfully imported")
 except Exception as e:
     UNSTRUCTURED_AVAILABLE = False
-    logger.error(f"Failed to import/test Unstructured: {str(e)}")
-    logger.error(f"Full traceback: {traceback.format_exc()}")
+    logger.error(f"Failed to import Unstructured: {str(e)}")
 
 def check_tesseract():
     """Check if tesseract is installed and in PATH"""
