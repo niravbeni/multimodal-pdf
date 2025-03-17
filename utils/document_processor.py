@@ -27,20 +27,27 @@ def process_pdfs_with_unstructured(pdf_paths):
     """Process PDFs using Unstructured"""
     elements = []
     for pdf_path in pdf_paths:
-        elements.extend(partition_pdf(filename=pdf_path))
+        st.write(f"Processing PDF: {pdf_path}")
+        elements.extend(partition_pdf(
+            filename=pdf_path,
+            # Add specific parameters for better extraction
+            include_metadata=True,
+            strategy="hi_res",
+            extract_images_in_pdf=True,
+            extract_tables=True
+        ))
+    
+    # Debug raw elements
+    st.write(f"Total elements found: {len(elements)}")
+    st.write("Element types:", [type(e).__name__ for e in elements])
     
     # Extract different types of elements
     texts = [e for e in elements if "Text" in str(type(e))]
     tables = [e for e in elements if "Table" in str(type(e))]
     images = [e for e in elements if "Image" in str(type(e))]
     
-    # Debug image extraction
-    st.write(f"Found {len(images)} images in document")
-    for i, img in enumerate(images):
-        st.write(f"Image {i} type: {type(img)}")
-        st.write(f"Image {i} attributes: {dir(img)}")
-        if hasattr(img, 'metadata'):
-            st.write(f"Image {i} metadata: {img.metadata}")
+    # Debug extracted elements
+    st.write(f"Extracted: {len(texts)} texts, {len(tables)} tables, {len(images)} images")
 
     return texts, tables, images
 
