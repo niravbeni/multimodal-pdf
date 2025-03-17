@@ -26,9 +26,10 @@ RUN apt-get update && apt-get install -y \
     antiword \
     unrtf \
     && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /usr/share/tesseract-ocr/tessdata \
+    && cp /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata /usr/share/tesseract-ocr/tessdata/ \
     && tesseract --version \
-    && which tesseract \
-    && ls -la /usr/bin/tesseract
+    && tesseract --list-langs
 
 # Verify tesseract installation and data
 RUN tesseract --version && \

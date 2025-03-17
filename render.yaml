@@ -10,9 +10,4 @@ services:
     disk:
       name: pdf-data
       mountPath: /data
-      sizeGB: 1
-  - type: web
-    name: streamlit
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: bash setup.sh && streamlit run app.py 
+      sizeGB: 1 
