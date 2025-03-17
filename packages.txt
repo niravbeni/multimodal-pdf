@@ -1,24 +1,10 @@
+# Core dependencies
+libmagic1
+libmagic-dev
+poppler-utils
 tesseract-ocr
 tesseract-ocr-eng
-tesseract-ocr-dev
-poppler-utils
-poppler-data
-libmagic1
-ghostscript
-libheif-dev
-python3-dev
-build-essential
-pkg-config
-libpoppler-dev
-libpoppler-cpp-dev
 libreoffice
 pandoc
-libmagic1
-libxml2-dev
-libxslt1-dev
-antiword
-unrtf
 # Add these for better PDF support
-pdftk-java
-imagemagick
 curl 

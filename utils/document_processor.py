@@ -11,7 +11,7 @@ from langchain_core.output_parsers import StrOutputParser
 import logging
 import subprocess
 from PyPDF2 import PdfReader
-from unstructured.partition.pdf import partition_pdf
+from unstructured.partition.auto import partition
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +27,7 @@ os.environ['TESSERACT_CMD'] = '/usr/bin/tesseract'
 # Check if Unstructured is available
 try:
     logger.info("Attempting to import Unstructured...")
-    from unstructured.partition.pdf import partition_pdf
+    from unstructured.partition.auto import partition
     UNSTRUCTURED_AVAILABLE = True
     logger.info("Unstructured successfully imported")
 except Exception as e:
@@ -111,7 +111,7 @@ def process_pdfs_with_unstructured(pdf_paths):
                 file_size = os.path.getsize(pdf_path)
                 logger.info(f"File size: {file_size} bytes")
                 
-                # Process file using partition_pdf with OCR
+                # Process file using partition with OCR
                 logger.info("\nStarting partition with OCR...")
                 logger.info("Partition settings:")
                 logger.info("- Strategy: hi_res")
@@ -121,8 +121,8 @@ def process_pdfs_with_unstructured(pdf_paths):
                 logger.info("- Extract Tables: True")
                 
                 try:
-                    elements = partition_pdf(
-                        filename=pdf_path,
+                    elements = partition(
+                        file=pdf_path,
                         strategy="hi_res",
                         include_metadata=True,
                         include_page_breaks=True,
