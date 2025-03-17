@@ -1,17 +1,13 @@
 """
 Multimodal PDF Chat - Main Application
 """
+from utils.sqlite_fix import fix_sqlite
+fix_sqlite()
+
 import sys
 import os
 import time
 import shutil
-
-# SQLite fix for ChromaDB
-try:
-    import pysqlite3
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except ImportError:
-    pass
 
 import uuid
 import warnings
