@@ -1,5 +1,6 @@
 tesseract-ocr
 tesseract-ocr-eng
+tesseract-ocr-dev
 poppler-utils
 poppler-data
 libmagic1

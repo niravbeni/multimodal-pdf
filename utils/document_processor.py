@@ -11,7 +11,7 @@ from langchain_core.output_parsers import StrOutputParser
 import logging
 import subprocess
 from PyPDF2 import PdfReader
-import unstructured_pytesseract
+from unstructured.partition.pdf import partition_pdf
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +22,7 @@ os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/tessdata'
 os.environ['TESSERACT_CMD'] = '/usr/bin/tesseract'
 
 # Set tesseract path directly in unstructured_pytesseract
-unstructured_pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+# unstructured_pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 # Check if Unstructured is available
 try:
