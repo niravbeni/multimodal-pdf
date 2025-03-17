@@ -47,9 +47,6 @@ def process_pdfs_with_unstructured(pdf_paths):
     tables = [e for e in elements if "Table" in str(type(e))]
     images = [e for e in elements if "Image" in str(type(e))]
     
-    # Debug extracted elements
-    st.write(f"Extracted: {len(texts)} texts, {len(tables)} tables, {len(images)} images")
-
     return texts, tables, images
 
 def get_pdf_text_fallback(pdf_paths):
