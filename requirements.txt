@@ -15,8 +15,13 @@ pi-heif
 unstructured[all]
 unstructured-inference
 pytesseract
+pdf2image
 pillow
 PyPDF2
+python-magic
+python-poppler
+nltk
+markdown
 
 # Other utilities
 joblib>=1.3.2

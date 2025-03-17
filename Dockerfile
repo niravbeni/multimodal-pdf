@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
     poppler-utils \
+    poppler-data \
     libmagic1 \
     ghostscript \
     libheif-dev \
@@ -17,13 +18,22 @@ RUN apt-get update && apt-get install -y \
     poppler-utils \
     libreoffice \
     pandoc \
+    libmagic1 \
+    libxml2-dev \
+    libxslt1-dev \
+    antiword \
+    unrtf \
     && rm -rf /var/lib/apt/lists/*
+
+# Download NLTK data
+RUN python -c "import nltk; nltk.download('punkt')"
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 ENV OCR_AGENT=pytesseract
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+ENV MAGIC=/usr/lib/file/magic.mgc
 
 # Set up working directory
 WORKDIR /app
