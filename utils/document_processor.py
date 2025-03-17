@@ -131,27 +131,42 @@ def summarize_elements(texts, tables, images, model):
                             the image is part of a PDF document. Be specific about 
                             any graphs, tables, or visual elements."""
             
-            for i, image in enumerate(images):
-                try:
-                    messages = [
-                        (
-                            "user",
-                            [
-                                {"type": "text", "text": img_prompt_template},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-                                },
-                            ],
-                        )
-                    ]
-                    
-                    img_prompt = ChatPromptTemplate.from_messages(messages)
-                    img_chain = img_prompt | model | StrOutputParser()
-                    summary = img_chain.invoke("")
-                    image_summaries.append(summary)
-                except Exception as e:
-                    print(f"Error summarizing image {i}: {str(e)}")
+            st.write("Summarizing images:", len(images))
+            for i, img in enumerate(images):
+                st.write(f"Image {i} data:", {
+                    "type": type(img),
+                    "has_image": hasattr(img, 'image'),
+                    "has_base64": hasattr(img, 'metadata') and hasattr(img.metadata, 'image_base64')
+                })
+                
+                # Get base64 data from the image
+                image_data = None
+                if hasattr(img, 'metadata') and hasattr(img.metadata, 'image_base64'):
+                    image_data = img.metadata.image_base64
+                elif hasattr(img, 'image'):
+                    import base64
+                    from io import BytesIO
+                    buffered = BytesIO()
+                    img.image.save(buffered, format="JPEG")
+                    image_data = base64.b64encode(buffered.getvalue()).decode()
+                
+                messages = [
+                    (
+                        "user",
+                        [
+                            {"type": "text", "text": img_prompt_template},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
+                            },
+                        ],
+                    )
+                ]
+                
+                img_prompt = ChatPromptTemplate.from_messages(messages)
+                img_chain = img_prompt | model | StrOutputParser()
+                summary = img_chain.invoke("")
+                image_summaries.append(summary)
         
         print(f"Generated summaries: {len(text_summaries)} texts, {len(table_summaries)} tables, {len(image_summaries)} images")
         status.update(label="All summaries generated!", state="complete")
