@@ -102,6 +102,16 @@ def process_pdfs_with_unstructured(pdf_paths):
                 logger.info("- Extract Tables: True")
                 
                 try:
+                    # Try to import OCR dependencies explicitly
+                    logger.info("Importing OCR dependencies...")
+                    import pytesseract
+                    from unstructured_pytesseract import ocr
+                    logger.info("OCR dependencies imported successfully")
+                    
+                    # Get tesseract version
+                    logger.info(f"Tesseract version: {pytesseract.get_tesseract_version()}")
+                    logger.info(f"Tesseract path: {pytesseract.get_tesseract_cmd()}")
+                    
                     elements = partition_pdf(
                         filename=pdf_path,
                         strategy="hi_res",
@@ -112,7 +122,8 @@ def process_pdfs_with_unstructured(pdf_paths):
                         extract_images_in_pdf=True,
                         extract_tables=True,
                         infer_table_structure=True,
-                        pdf_image_dpi=300
+                        pdf_image_dpi=300,
+                        ocr_level=2  # Force OCR on everything
                     )
                     logger.info(f"\nPartition successful, got {len(elements)} elements")
                 except Exception as partition_error:

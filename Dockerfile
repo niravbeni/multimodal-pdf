@@ -23,7 +23,11 @@ RUN apt-get update && apt-get install -y \
     libxslt1-dev \
     antiword \
     unrtf \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && tesseract --version \
+    && which tesseract \
+    && ls -la /usr/bin/tesseract \
+    && ls -la /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata
 
 # Create tessdata directory if it doesn't exist
 RUN mkdir -p /usr/share/tesseract-ocr/4.00/tessdata
@@ -39,6 +43,7 @@ ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 ENV OCR_AGENT=pytesseract
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 ENV MAGIC=/usr/lib/file/magic.mgc
+ENV TESSERACT_CMD=/usr/bin/tesseract
 
 # Set up working directory
 WORKDIR /app
