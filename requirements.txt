@@ -19,7 +19,6 @@ pdf2image
 pillow
 PyPDF2
 python-magic
-python-poppler
 nltk
 markdown
 
