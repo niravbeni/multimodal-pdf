@@ -18,9 +18,11 @@ from utils.helpers import ensure_chroma_directory
 
 def parse_docs(docs):
     """Split base64-encoded images and texts"""
+    st.write(f"Retrieved {len(docs)} documents")
     b64_images = []
     texts = []
     for doc in docs:
+        st.write(f"Processing doc type: {type(doc)}")
         # Check if this is a base64 image
         if isinstance(doc, str):
             try:
