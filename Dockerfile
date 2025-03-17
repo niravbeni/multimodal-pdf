@@ -25,11 +25,12 @@ RUN apt-get update && apt-get install -y \
     unrtf \
     && rm -rf /var/lib/apt/lists/*
 
-# Find tesseract path and verify installation
-RUN tesseract_path=$(which tesseract) && \
-    echo "Tesseract path: ${tesseract_path}" && \
-    tesseract --version && \
-    ls -l /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata && \
+# Create tessdata directory if it doesn't exist
+RUN mkdir -p /usr/share/tesseract-ocr/4.00/tessdata
+
+# Verify tesseract installation and data
+RUN tesseract --version && \
+    ls -la /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata && \
     tesseract --list-langs
 
 # Set environment variables
@@ -38,7 +39,6 @@ ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 ENV OCR_AGENT=pytesseract
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 ENV MAGIC=/usr/lib/file/magic.mgc
-ENV TESSERACT_CMD=/usr/bin/tesseract
 
 # Set up working directory
 WORKDIR /app
@@ -51,7 +51,8 @@ RUN pip install --no-cache-dir unstructured[all] && \
     pip install --no-cache-dir -r requirements.txt
 
 # Test OCR setup
-RUN python -c "import pytesseract; print('Tesseract path:', pytesseract.get_tesseract_cmd()); print('Version:', pytesseract.get_tesseract_version())"
+RUN python -c "import pytesseract; print('Tesseract path:', pytesseract.get_tesseract_cmd()); print('Version:', pytesseract.get_tesseract_version())" && \
+    python -c "import os; print('TESSDATA_PREFIX:', os.environ.get('TESSDATA_PREFIX')); print('Directory exists:', os.path.exists(os.environ.get('TESSDATA_PREFIX', '')));"
 
 # Copy the rest of the application
 COPY . .
