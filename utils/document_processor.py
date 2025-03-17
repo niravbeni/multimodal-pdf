@@ -16,6 +16,10 @@ from PyPDF2 import PdfReader
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Set tesseract environment variables
+os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata'
+os.environ['TESSERACT_CMD'] = '/usr/bin/tesseract'
+
 # Check if Unstructured is available
 try:
     logger.info("Attempting to import Unstructured...")
