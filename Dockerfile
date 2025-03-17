@@ -26,11 +26,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && tesseract --version \
     && which tesseract \
-    && ls -la /usr/bin/tesseract \
-    && ls -la /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata
+    && ls -la /usr/bin/tesseract
 
-# Create tessdata directory if it doesn't exist
-RUN mkdir -p /usr/share/tesseract-ocr/4.00/tessdata
+# Create tessdata directory and copy language data
+RUN mkdir -p /usr/share/tesseract-ocr/4.00/tessdata && \
+    cp /usr/share/tesseract-ocr/tessdata/eng.traineddata /usr/share/tesseract-ocr/4.00/tessdata/ && \
+    ls -la /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata
 
 # Verify tesseract installation and data
 RUN tesseract --version && \
