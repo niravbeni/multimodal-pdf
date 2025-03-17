@@ -25,12 +25,18 @@ RUN apt-get update && apt-get install -y \
     unrtf \
     && rm -rf /var/lib/apt/lists/*
 
-# Verify tesseract installation
+# Create symbolic link to ensure tesseract is in PATH
+RUN which tesseract && \
+    ln -s $(which tesseract) /usr/local/bin/tesseract
+
+# Verify tesseract installation and data
 RUN tesseract --version && \
-    ls -l /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata
+    ls -l /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata && \
+    tesseract --list-langs
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/usr/local/bin:${PATH}"
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 ENV OCR_AGENT=pytesseract
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
@@ -47,7 +53,8 @@ RUN pip install --no-cache-dir unstructured[all] && \
     pip install --no-cache-dir -r requirements.txt
 
 # Test OCR setup
-RUN python -c "from unstructured.partition.pdf import partition_pdf; from unstructured_pytesseract import ocr; print('OCR setup successful')"
+RUN python -c "from unstructured.partition.pdf import partition_pdf; from unstructured_pytesseract import ocr; print('OCR setup successful')" && \
+    python -c "import pytesseract; print(pytesseract.get_tesseract_version())"
 
 # Copy the rest of the application
 COPY . .
