@@ -30,7 +30,7 @@ def check_tesseract():
     """Check if tesseract is installed and in PATH"""
     try:
         # Check tessdata directory
-        tessdata_path = os.environ.get('TESSDATA_PREFIX', '/usr/local/share/tessdata')
+        tessdata_path = os.environ.get('TESSDATA_PREFIX', '/usr/share/tesseract-ocr/4.00/tessdata')
         logger.info(f"Checking TESSDATA_PREFIX: {tessdata_path}")
         if not os.path.exists(tessdata_path):
             logger.error(f"Tessdata directory not found: {tessdata_path}")
