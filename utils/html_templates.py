@@ -62,14 +62,25 @@ def load_css():
 css = load_css()
 
 # Bot message template
-bot_template = f"""
-<div class="chat-message bot">
-    <div class="avatar">
-        <img src="data:image/png;base64,{bot_img}" style="max-height: 78px; max-width: 78px; border-radius: 50%; object-fit: cover;">
+def bot_template(answer):
+    return f'''
+    <div class="chat-message bot">
+        <div class="avatar">
+            <img src="https://i.ibb.co/cN0nmSj/Screenshot-2023-05-28-at-02-37-21.png">
+        </div>
+        <div class="message">
+            {answer}
+            {display_images(answer)}
+        </div>
     </div>
-    <div class="message">{{{{MSG}}}}</div>
-</div>
-"""
+    '''
+
+def display_images(answer):
+    """Extract and display base64 images from the answer"""
+    if "data:image/jpeg;base64," in answer:
+        image_data = answer.split("data:image/jpeg;base64,")[1].split('"')[0]
+        return f'<img src="data:image/jpeg;base64,{image_data}" style="max-width: 100%;">'
+    return ""
 
 # User message template
 user_template = f"""

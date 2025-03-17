@@ -42,6 +42,10 @@ def build_prompt(kwargs):
     user_question = kwargs["question"]
     chat_history = kwargs.get("chat_history", [])
 
+    # Add logging to see what we're getting
+    st.write("Images found:", len(docs_by_type["images"]))
+    st.write("Image data available:", [bool(img) for img in docs_by_type["images"]])
+
     context_text = ""
     if len(docs_by_type["texts"]) > 0:
         for text_element in docs_by_type["texts"]:
