@@ -31,33 +31,49 @@ def check_tesseract():
     try:
         # Check tessdata directory
         tessdata_path = os.environ.get('TESSDATA_PREFIX', '/usr/local/share/tessdata')
+        logger.info(f"Checking TESSDATA_PREFIX: {tessdata_path}")
         if not os.path.exists(tessdata_path):
             logger.error(f"Tessdata directory not found: {tessdata_path}")
             return False
             
         # Check for eng.traineddata
         eng_data = os.path.join(tessdata_path, 'eng.traineddata')
+        logger.info(f"Checking for English language data: {eng_data}")
         if not os.path.exists(eng_data):
             logger.error(f"English language data not found: {eng_data}")
             return False
             
         # Try to run tesseract
+        logger.info("Attempting to run tesseract --version...")
         result = subprocess.run(['tesseract', '--version'], capture_output=True, text=True)
-        logger.info(f"Tesseract version: {result.stdout}")
+        logger.info(f"Tesseract version output: {result.stdout}")
+        logger.info(f"Tesseract error output: {result.stderr}")
         return True
     except Exception as e:
         logger.error(f"Tesseract check failed: {str(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return False
 
 def process_pdfs_with_unstructured(pdf_paths):
     """Process PDFs using Unstructured"""
     logger.info(f"Starting PDF processing with Unstructured. Paths: {pdf_paths}")
     
+    # Log environment variables
+    logger.info(f"TESSDATA_PREFIX: {os.environ.get('TESSDATA_PREFIX')}")
+    logger.info(f"TESSERACT_CMD: {os.environ.get('TESSERACT_CMD')}")
+    logger.info(f"OCR_AGENT: {os.environ.get('OCR_AGENT')}")
+    
     if not UNSTRUCTURED_AVAILABLE:
         logger.error("Unstructured is not available - initialization failed")
         return [], [], []
         
     logger.info("Unstructured is available, proceeding with PDF processing")
+    
+    # Check if tesseract is working
+    logger.info("Checking tesseract installation...")
+    if not check_tesseract():
+        logger.error("Tesseract is not properly configured")
+        return [], [], []
     
     all_texts = []
     all_tables = []
@@ -66,19 +82,24 @@ def process_pdfs_with_unstructured(pdf_paths):
     with st.status("Processing PDFs...") as status:
         for i, pdf_path in enumerate(pdf_paths):
             try:
-                logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
+                logger.info(f"\n{'='*50}\nProcessing file {i+1}/{len(pdf_paths)}: {pdf_path}")
                 
                 # Verify file exists and is readable
                 if not os.path.exists(pdf_path):
                     logger.error(f"File not found: {pdf_path}")
                     continue
                     
-                logger.info(f"File size: {os.path.getsize(pdf_path)} bytes")
+                file_size = os.path.getsize(pdf_path)
+                logger.info(f"File size: {file_size} bytes")
                 
-                # Process file using partition_pdf with detailed logging
-                logger.info("Starting partition with these settings:")
-                logger.info(f"- Strategy: hi_res")
-                logger.info(f"- Include metadata: True")
+                # Process file using partition_pdf with OCR
+                logger.info("\nStarting partition with OCR...")
+                logger.info("Partition settings:")
+                logger.info("- Strategy: hi_res")
+                logger.info("- OCR Languages: eng")
+                logger.info("- DPI: 300")
+                logger.info("- Extract Images: True")
+                logger.info("- Extract Tables: True")
                 
                 try:
                     elements = partition_pdf(
@@ -93,57 +114,64 @@ def process_pdfs_with_unstructured(pdf_paths):
                         infer_table_structure=True,
                         pdf_image_dpi=300
                     )
-                    logger.info(f"Partition successful, got {len(elements)} elements")
+                    logger.info(f"\nPartition successful, got {len(elements)} elements")
                 except Exception as partition_error:
-                    logger.error(f"Partition failed: {str(partition_error)}")
-                    logger.error(traceback.format_exc())
+                    logger.error(f"\nPartition failed: {str(partition_error)}")
+                    logger.error(f"Full traceback:\n{traceback.format_exc()}")
                     raise partition_error
                 
                 # Log element details for debugging
-                logger.info(f"Extracted {len(elements)} elements")
+                logger.info("\nElement Details:")
                 for idx, element in enumerate(elements):
-                    logger.info(f"Element {idx}: type={type(element)}, has_text={hasattr(element, 'text')}")
+                    logger.info(f"\nElement {idx}:")
+                    logger.info(f"- Type: {type(element)}")
+                    logger.info(f"- Has text: {hasattr(element, 'text')}")
+                    if hasattr(element, 'text'):
+                        text_preview = element.text[:100] + "..." if len(element.text) > 100 else element.text
+                        logger.info(f"- Text preview: {text_preview}")
+                    if hasattr(element, 'metadata'):
+                        logger.info(f"- Metadata keys: {element.metadata.keys()}")
                 
                 # Process elements
                 pdf_tables = []
                 pdf_texts = []
                 pdf_images = []
                 
+                logger.info("\nProcessing elements...")
                 for element in elements:
                     element_type = str(type(element))
-                    logger.info(f"Processing element of type: {element_type}")
-                    
                     try:
-                        # Handle tables
                         if "Table" in element_type and hasattr(element, 'text'):
                             pdf_tables.append(element)
-                            logger.info(f"Added table element: {len(element.text)} chars")
-                        # Handle images
+                            logger.info(f"Added table element ({len(element.text)} chars)")
                         elif hasattr(element, 'metadata') and element.metadata.get('image_base64'):
                             pdf_images.append(element.metadata['image_base64'])
                             logger.info("Added image element")
-                        # Handle text
                         elif hasattr(element, 'text'):
                             pdf_texts.append(element)
-                            logger.info(f"Added text element: {len(element.text)} chars")
+                            logger.info(f"Added text element ({len(element.text)} chars)")
+                        else:
+                            logger.warning(f"Skipped element of type {element_type} - no text or image")
                     except Exception as element_error:
-                        logger.warning(f"Error processing element: {element_error}")
+                        logger.error(f"Error processing element: {str(element_error)}")
+                        logger.error(f"Element traceback:\n{traceback.format_exc()}")
                         continue
+                
+                # Log processing results
+                logger.info(f"\nProcessing Results for {pdf_path}:")
+                logger.info(f"- Text elements: {len(pdf_texts)}")
+                logger.info(f"- Table elements: {len(pdf_tables)}")
+                logger.info(f"- Image elements: {len(pdf_images)}")
                 
                 # Add to collections
                 all_texts.extend(pdf_texts)
                 all_tables.extend(pdf_tables)
                 all_images.extend(pdf_images)
                 
-                logger.info(f"Processed {pdf_path}:")
-                logger.info(f"- Texts: {len(pdf_texts)}")
-                logger.info(f"- Tables: {len(pdf_tables)}")
-                logger.info(f"- Images: {len(pdf_images)}")
-                
             except Exception as e:
-                logger.error(f"Error in unstructured processing: {str(e)}")
-                logger.error(traceback.format_exc())
-                return [], [], []  # Return empty lists to trigger fallback
+                logger.error(f"\nError in unstructured processing: {str(e)}")
+                logger.error(f"Full traceback:\n{traceback.format_exc()}")
+                return [], [], []
         
         status.update(label=f"PDF processing complete! Extracted {len(all_texts)} text chunks, {len(all_tables)} tables, {len(all_images)} images.", state="complete")
     
