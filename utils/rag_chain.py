@@ -156,12 +156,30 @@ def create_multimodal_retriever(texts, tables, images, text_summaries, table_sum
     # Add images
     if images and image_summaries:
         img_ids = [str(uuid.uuid4()) for _ in images]
+        # Debug image storage
+        st.write(f"Storing {len(images)} images")
+        for i, img in enumerate(images):
+            st.write(f"Image {i} data type: {type(img)}")
+            if hasattr(img, 'image'):
+                st.write(f"Image {i} has image data")
         summary_img = [
             Document(page_content=summary, metadata={id_key: img_ids[i]})
             for i, summary in enumerate(image_summaries)
         ]
         retriever.vectorstore.add_documents(summary_img)
-        retriever.docstore.mset(list(zip(img_ids, images)))
+        # Convert images to base64 if needed
+        image_data = []
+        for img in images:
+            if hasattr(img, 'image'):
+                import base64
+                from io import BytesIO
+                buffered = BytesIO()
+                img.image.save(buffered, format="JPEG")
+                img_str = base64.b64encode(buffered.getvalue()).decode()
+                image_data.append(img_str)
+            else:
+                image_data.append(img)
+        retriever.docstore.mset(list(zip(img_ids, image_data)))
     
     return retriever
 

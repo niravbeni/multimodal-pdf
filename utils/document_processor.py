@@ -24,63 +24,25 @@ except Exception as e:
     logger.error(f"Failed to import Unstructured: {str(e)}")
 
 def process_pdfs_with_unstructured(pdf_paths):
-    """Process PDFs using Unstructured following the example approach"""
-    logger.info(f"Starting PDF processing with Unstructured. Paths: {pdf_paths}")
-    all_texts = []
-    all_tables = []
-    all_images = []
+    """Process PDFs using Unstructured"""
+    elements = []
+    for pdf_path in pdf_paths:
+        elements.extend(partition_pdf(filename=pdf_path))
     
-    with st.status("Processing PDFs...") as status:
-        for i, pdf_path in enumerate(pdf_paths):
-            try:
-                logger.info(f"Processing file {i+1}/{len(pdf_paths)}: {pdf_path}")
-                # Extract content using the same parameters as the example
-                chunks = partition_pdf(
-                    filename=pdf_path,
-                    infer_table_structure=True,
-                    strategy="hi_res",
-                    extract_image_block_types=["Image"],
-                    extract_image_block_to_payload=True,
-                    chunking_strategy="by_title",
-                    max_characters=10000,
-                    combine_text_under_n_chars=2000,
-                    new_after_n_chars=6000,
-                )
-                logger.info(f"Successfully extracted {len(chunks)} chunks from {pdf_path}")
-                
-                # Separate chunks by type exactly like the example
-                pdf_tables = []
-                pdf_texts = []
-                
-                for chunk in chunks:
-                    if "Table" in str(type(chunk)):
-                        pdf_tables.append(chunk)
-                    if "CompositeElement" in str(type(chunk)):
-                        pdf_texts.append(chunk)
-                
-                # Get images from CompositeElements like the example
-                pdf_images = []
-                for chunk in chunks:
-                    if "CompositeElement" in str(type(chunk)):
-                        if hasattr(chunk, 'metadata') and hasattr(chunk.metadata, 'orig_elements'):
-                            chunk_els = chunk.metadata.orig_elements
-                            for el in chunk_els:
-                                if "Image" in str(type(el)):
-                                    if hasattr(el, 'metadata') and hasattr(el.metadata, 'image_base64'):
-                                        pdf_images.append(el.metadata.image_base64)
-                
-                # Add to the overall collections
-                all_texts.extend(pdf_texts)
-                all_tables.extend(pdf_tables)
-                all_images.extend(pdf_images)
-                
-            except Exception as e:
-                print(f"Error in unstructured processing: {str(e)}")
-                return [], [], []  # Return empty lists to trigger fallback
-        
-        status.update(label=f"PDF processing complete! Extracted {len(all_texts)} text chunks, {len(all_tables)} tables, {len(all_images)} images.", state="complete")
+    # Extract different types of elements
+    texts = [e for e in elements if e.type == "Text"]
+    tables = [e for e in elements if e.type == "Table"]
+    images = [e for e in elements if e.type == "Image"]
     
-    return all_texts, all_tables, all_images
+    # Debug image extraction
+    st.write(f"Found {len(images)} images in document")
+    for i, img in enumerate(images):
+        st.write(f"Image {i} type: {type(img)}")
+        st.write(f"Image {i} attributes: {dir(img)}")
+        if hasattr(img, 'metadata'):
+            st.write(f"Image {i} metadata: {img.metadata}")
+
+    return texts, tables, images
 
 def get_pdf_text_fallback(pdf_paths):
     """Fallback method using PyPDF2"""
