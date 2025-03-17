@@ -13,6 +13,8 @@ chromadb
 pdfminer.six
 pi-heif
 unstructured[all]
+unstructured-inference
+pytesseract
 pillow
 PyPDF2
 
