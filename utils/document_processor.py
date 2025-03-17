@@ -12,6 +12,7 @@ import logging
 import subprocess
 from PyPDF2 import PdfReader
 from unstructured.partition.auto import partition
+import pytesseract
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -34,9 +35,22 @@ except Exception as e:
     UNSTRUCTURED_AVAILABLE = False
     logger.error(f"Failed to import Unstructured: {str(e)}")
 
+# Before any processing
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+
 def check_tesseract():
     """Check if tesseract is installed and in PATH"""
     try:
+        # Debug: Print current environment
+        logger.info(f"Current environment:")
+        logger.info(f"PATH: {os.environ.get('PATH')}")
+        logger.info(f"TESSDATA_PREFIX: {os.environ.get('TESSDATA_PREFIX')}")
+        logger.info(f"PWD: {os.getcwd()}")
+        
+        # Debug: Check tesseract binary
+        result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True)
+        logger.info(f"Tesseract binary location: {result.stdout}")
+        
         # Check possible tessdata locations
         possible_paths = [
             '/usr/share/tesseract-ocr/tessdata',

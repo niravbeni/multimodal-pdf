@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-eng \
     libtesseract-dev \
     libleptonica-dev \
+    curl \
     # PDF processing
     poppler-utils \
     poppler-data \
@@ -27,13 +28,17 @@ RUN apt-get update && apt-get install -y \
     unrtf \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /usr/share/tesseract-ocr/tessdata \
-    && cp /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata /usr/share/tesseract-ocr/tessdata/ \
+    && curl -L -o /usr/share/tesseract-ocr/tessdata/eng.traineddata \
+       https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata \
+    && chmod 644 /usr/share/tesseract-ocr/tessdata/eng.traineddata \
     && tesseract --version \
     && tesseract --list-langs
 
 # Verify tesseract installation and data
-RUN tesseract --version && \
-    ls -la /usr/share/tesseract-ocr/tessdata/eng.traineddata && \
+RUN ls -la /usr/share/tesseract-ocr/tessdata/ && \
+    echo "TESSDATA_PREFIX=$TESSDATA_PREFIX" && \
+    tesseract --version && \
+    which tesseract && \
     tesseract --list-langs
 
 # Set environment variables
