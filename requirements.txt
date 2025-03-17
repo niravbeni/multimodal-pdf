@@ -16,6 +16,7 @@ PyPDF2>=3.0.0
 # PDF processing
 unstructured[all]
 unstructured-inference
+unstructured-pytesseract>=0.3.12
 pdf2image
 pytesseract
 python-magic
