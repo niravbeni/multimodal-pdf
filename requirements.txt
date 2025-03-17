@@ -14,8 +14,8 @@ pdfminer.six
 pi-heif
 unstructured[all]
 unstructured-inference
-unstructured-pytesseract
-pytesseract
+unstructured-pytesseract>=0.3.12
+pytesseract>=0.3.10
 pdf2image
 pillow
 PyPDF2
