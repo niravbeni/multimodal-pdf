@@ -25,8 +25,9 @@ RUN apt-get update && apt-get install -y \
     unrtf \
     && rm -rf /var/lib/apt/lists/*
 
-# Download NLTK data
-RUN python -c "import nltk; nltk.download('punkt')"
+# Verify tesseract installation
+RUN tesseract --version && \
+    ls -l /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -42,7 +43,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir unstructured[all] && \
     pip install --no-cache-dir unstructured-inference && \
+    pip install --no-cache-dir unstructured-pytesseract && \
     pip install --no-cache-dir -r requirements.txt
+
+# Test OCR setup
+RUN python -c "from unstructured.partition.pdf import partition_pdf; from unstructured_pytesseract import ocr; print('OCR setup successful')"
 
 # Copy the rest of the application
 COPY . .
