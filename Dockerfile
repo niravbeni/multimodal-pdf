@@ -28,19 +28,14 @@ RUN apt-get update && apt-get install -y \
     && which tesseract \
     && ls -la /usr/bin/tesseract
 
-# Create tessdata directory and copy language data
-RUN mkdir -p /usr/share/tesseract-ocr/4.00/tessdata && \
-    cp /usr/share/tesseract-ocr/tessdata/eng.traineddata /usr/share/tesseract-ocr/4.00/tessdata/ && \
-    ls -la /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata
-
 # Verify tesseract installation and data
 RUN tesseract --version && \
-    ls -la /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata && \
+    ls -la /usr/share/tesseract-ocr/tessdata/eng.traineddata && \
     tesseract --list-langs
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/tessdata
 ENV OCR_AGENT=pytesseract
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 ENV MAGIC=/usr/lib/file/magic.mgc
