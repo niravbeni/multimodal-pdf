@@ -20,4 +20,19 @@ chmod -R 755 /usr/local/share/tessdata
 echo "Tesseract installation info:"
 /usr/local/bin/tesseract --version
 ls -l /usr/local/bin/tesseract
-ls -l /usr/local/share/tessdata 
+ls -l /usr/local/share/tessdata
+
+# Create tessdata directory
+sudo mkdir -p /usr/share/tesseract-ocr/tessdata
+
+# Copy language data files
+sudo cp /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata /usr/share/tesseract-ocr/tessdata/
+sudo cp /usr/share/tesseract-ocr/4.00/tessdata/osd.traineddata /usr/share/tesseract-ocr/tessdata/
+
+# Set permissions
+sudo chmod 755 /usr/share/tesseract-ocr/tessdata
+sudo chmod 644 /usr/share/tesseract-ocr/tessdata/*.traineddata
+
+# Verify installation
+tesseract --version
+tesseract --list-langs 
