@@ -77,16 +77,21 @@ def process_pdfs_with_unstructured(pdf_paths):
                 
                 # Process file using partition_pdf with detailed logging
                 logger.info("Starting partition with these settings:")
-                logger.info(f"- Strategy: fast")
+                logger.info(f"- Strategy: hi_res")
                 logger.info(f"- Include metadata: True")
                 
                 try:
                     elements = partition_pdf(
                         filename=pdf_path,
-                        strategy="fast",
+                        strategy="hi_res",
                         include_metadata=True,
                         include_page_breaks=True,
-                        encoding='utf-8'
+                        encoding='utf-8',
+                        ocr_languages=['eng'],
+                        extract_images_in_pdf=True,
+                        extract_tables=True,
+                        infer_table_structure=True,
+                        pdf_image_dpi=300
                     )
                     logger.info(f"Partition successful, got {len(elements)} elements")
                 except Exception as partition_error:
