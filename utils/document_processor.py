@@ -9,6 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain.schema.document import Document
 import logging
+from langchain.schema import HumanMessage
 
 # At the top of the file, add debug logging
 logging.basicConfig(level=logging.INFO)
@@ -94,81 +95,75 @@ def summarize_elements(texts, tables, images, model):
         Do not start your message by saying "Here is a summary" or anything like that.
         Just give the summary as it is.
 
-        Table or text chunk: {element}
+        Table or text chunk: {text}
         """
         
         prompt = ChatPromptTemplate.from_template(prompt_text)
-        summarize_chain = {"element": lambda x: x} | prompt | model | StrOutputParser()
+        summarize_chain = prompt | model | StrOutputParser()
         
         # Summarize texts
         if texts:
             status.update(label=f"Summarizing {len(texts)} text chunks...")
             for text in texts:
                 try:
-                    summary = summarize_chain.invoke(text)
+                    # Convert text to string if needed
+                    text_content = text.text if hasattr(text, 'text') else str(text)
+                    summary = summarize_chain.invoke({"text": text_content})
                     text_summaries.append(summary)
                 except Exception as e:
                     print(f"Error summarizing text: {str(e)}")
-        
+
         # Summarize tables
         if tables:
             status.update(label=f"Summarizing {len(tables)} tables...")
-            # Get HTML representation of tables like the example
             tables_html = [table.metadata.text_as_html for table in tables if hasattr(table, 'metadata') and hasattr(table.metadata, 'text_as_html')]
             
             for table_html in tables_html:
                 try:
-                    summary = summarize_chain.invoke(table_html)
+                    summary = summarize_chain.invoke({"text": table_html})
                     table_summaries.append(summary)
                 except Exception as e:
                     print(f"Error summarizing table: {str(e)}")
-        
+
         # Summarize images
         if images:
             status.update(label=f"Analyzing {len(images)} images...")
-            # Image summary prompt (similar to example)
-            img_prompt_template = """Describe the image in detail. For context, 
-                            the image is part of a PDF document. Be specific about 
-                            any graphs, tables, or visual elements."""
-            
-            st.write("Summarizing images:", len(images))
             for i, img in enumerate(images):
-                st.write(f"Image {i} data:", {
-                    "type": type(img),
-                    "has_image": hasattr(img, 'image'),
-                    "has_base64": hasattr(img, 'metadata') and hasattr(img.metadata, 'image_base64')
-                })
-                
-                # Get base64 data from the image
-                image_data = None
-                if hasattr(img, 'metadata') and hasattr(img.metadata, 'image_base64'):
-                    image_data = img.metadata.image_base64
-                elif hasattr(img, 'image'):
-                    import base64
-                    from io import BytesIO
-                    buffered = BytesIO()
-                    img.image.save(buffered, format="JPEG")
-                    image_data = base64.b64encode(buffered.getvalue()).decode()
-                
-                messages = [
-                    (
-                        "user",
-                        [
-                            {"type": "text", "text": img_prompt_template},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
-                            },
-                        ],
-                    )
-                ]
-                
-                img_prompt = ChatPromptTemplate.from_messages(messages)
-                img_chain = img_prompt | model | StrOutputParser()
-                summary = img_chain.invoke("")
-                image_summaries.append(summary)
-        
-        print(f"Generated summaries: {len(text_summaries)} texts, {len(table_summaries)} tables, {len(image_summaries)} images")
+                try:
+                    # Get base64 data from the image
+                    image_data = None
+                    if hasattr(img, 'metadata') and hasattr(img.metadata, 'image_base64'):
+                        image_data = img.metadata.image_base64
+                    elif hasattr(img, 'image'):
+                        import base64
+                        from io import BytesIO
+                        buffered = BytesIO()
+                        img.image.save(buffered, format="JPEG")
+                        image_data = base64.b64encode(buffered.getvalue()).decode()
+                    
+                    if image_data:
+                        messages = [
+                            HumanMessage(
+                                content=[
+                                    {
+                                        "type": "text",
+                                        "text": "Describe this image in detail, focusing on any graphs, tables, or visual elements."
+                                    },
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}
+                                    }
+                                ]
+                            )
+                        ]
+                        img_prompt = ChatPromptTemplate.from_messages(messages)
+                        img_chain = img_prompt | model | StrOutputParser()
+                        summary = img_chain.invoke({})
+                        image_summaries.append(summary)
+                except Exception as e:
+                    print(f"Error summarizing image: {str(e)}")
+                    image_summaries.append("Failed to summarize image")
+
         status.update(label="All summaries generated!", state="complete")
     
     return text_summaries, table_summaries, image_summaries
