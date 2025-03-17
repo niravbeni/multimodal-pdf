@@ -37,18 +37,22 @@ except Exception as e:
 def check_tesseract():
     """Check if tesseract is installed and in PATH"""
     try:
-        # Check tessdata directory
-        tessdata_path = os.environ.get('TESSDATA_PREFIX', '/usr/share/tesseract-ocr/4.00/tessdata')
-        logger.info(f"Checking TESSDATA_PREFIX: {tessdata_path}")
-        if not os.path.exists(tessdata_path):
-            logger.error(f"Tessdata directory not found: {tessdata_path}")
-            return False
-            
-        # Check for eng.traineddata
-        eng_data = os.path.join(tessdata_path, 'eng.traineddata')
-        logger.info(f"Checking for English language data: {eng_data}")
-        if not os.path.exists(eng_data):
-            logger.error(f"English language data not found: {eng_data}")
+        # Check possible tessdata locations
+        possible_paths = [
+            '/usr/share/tesseract-ocr/tessdata',
+            '/usr/share/tesseract-ocr/4.00/tessdata',
+            '/usr/local/share/tessdata',
+            '/usr/share/tessdata'
+        ]
+        
+        for path in possible_paths:
+            logger.info(f"Checking path: {path}")
+            if os.path.exists(path):
+                logger.info(f"Found tessdata at: {path}")
+                os.environ['TESSDATA_PREFIX'] = path
+                break
+        else:
+            logger.error("No valid tessdata directory found")
             return False
             
         # Try to run tesseract
@@ -56,6 +60,13 @@ def check_tesseract():
         result = subprocess.run(['tesseract', '--version'], capture_output=True, text=True)
         logger.info(f"Tesseract version output: {result.stdout}")
         logger.info(f"Tesseract error output: {result.stderr}")
+        
+        # Check if eng.traineddata exists in the found path
+        eng_data = os.path.join(os.environ['TESSDATA_PREFIX'], 'eng.traineddata')
+        if not os.path.exists(eng_data):
+            logger.error(f"English language data not found: {eng_data}")
+            return False
+            
         return True
     except Exception as e:
         logger.error(f"Tesseract check failed: {str(e)}")
