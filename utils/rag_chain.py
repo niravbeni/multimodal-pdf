@@ -107,7 +107,7 @@ def get_conversational_rag_chain(retriever, model):
     return chain, memory
 
 def create_multimodal_retriever(texts, tables, images, text_summaries, table_summaries, image_summaries, embeddings):
-    """Create a MultiVectorRetriever for multimodal content"""
+    st.write(f"Processing: {len(texts)} texts, {len(tables)} tables, {len(images)} images")
     # Create a unique ChromaDB collection for this session
     chroma_dir = ensure_chroma_directory()
     collection_name = f"multimodal_rag_{uuid.uuid4().hex[:8]}"
