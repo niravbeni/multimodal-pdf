@@ -3,8 +3,12 @@ FROM python:3.9-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
+    # Tesseract and its dependencies
     tesseract-ocr \
     tesseract-ocr-eng \
+    libtesseract-dev \
+    libleptonica-dev \
+    # PDF processing
     poppler-utils \
     poppler-data \
     libmagic1 \
@@ -15,10 +19,8 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libpoppler-dev \
     libpoppler-cpp-dev \
-    poppler-utils \
     libreoffice \
     pandoc \
-    libmagic1 \
     libxml2-dev \
     libxslt1-dev \
     antiword \
