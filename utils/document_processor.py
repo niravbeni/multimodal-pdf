@@ -30,9 +30,9 @@ def process_pdfs_with_unstructured(pdf_paths):
         elements.extend(partition_pdf(filename=pdf_path))
     
     # Extract different types of elements
-    texts = [e for e in elements if e.type == "Text"]
-    tables = [e for e in elements if e.type == "Table"]
-    images = [e for e in elements if e.type == "Image"]
+    texts = [e for e in elements if "Text" in str(type(e))]
+    tables = [e for e in elements if "Table" in str(type(e))]
+    images = [e for e in elements if "Image" in str(type(e))]
     
     # Debug image extraction
     st.write(f"Found {len(images)} images in document")
