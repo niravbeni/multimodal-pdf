@@ -27,25 +27,41 @@ except Exception as e:
 def process_pdfs_with_unstructured(pdf_paths):
     """Process PDFs using Unstructured"""
     elements = []
-    for pdf_path in pdf_paths:
-        st.write(f"Processing PDF: {pdf_path}")
-        elements.extend(partition_pdf(
-            filename=pdf_path,
-            # Add specific parameters for better extraction
-            include_metadata=True,
-            strategy="hi_res",
-            extract_images_in_pdf=True,
-            extract_tables=True
-        ))
     
-    # Debug raw elements
-    st.write(f"Total elements found: {len(elements)}")
-    st.write("Element types:", [type(e).__name__ for e in elements])
+    # Create a status container with spinner
+    with st.status("Processing PDFs...", expanded=True) as status:
+        for pdf_path in pdf_paths:
+            # Update status for each file
+            status.update(label=f"📄 Processing {os.path.basename(pdf_path)}...", expanded=True)
+            
+            try:
+                file_elements = partition_pdf(
+                    filename=pdf_path,
+                    include_metadata=True,
+                    strategy="hi_res",
+                    extract_images_in_pdf=True,
+                    extract_tables=True
+                )
+                elements.extend(file_elements)
+                
+                # Show success for each file
+                status.update(label=f"✅ Processed {os.path.basename(pdf_path)}")
+                
+            except Exception as e:
+                # Show error if processing fails
+                status.error(f"❌ Error processing {os.path.basename(pdf_path)}: {str(e)}")
+                continue
     
-    # Extract different types of elements
-    texts = [e for e in elements if "Text" in str(type(e))]
-    tables = [e for e in elements if "Table" in str(type(e))]
-    images = [e for e in elements if "Image" in str(type(e))]
+        # Show final stats
+        total_elements = len(elements)
+        texts = [e for e in elements if "Text" in str(type(e))]
+        tables = [e for e in elements if "Table" in str(type(e))]
+        images = [e for e in elements if "Image" in str(type(e))]
+        
+        status.update(
+            label=f"✨ Processing complete! Found {len(texts)} text blocks, {len(tables)} tables, and {len(images)} images",
+            state="complete"
+        )
     
     return texts, tables, images
 
