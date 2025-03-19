@@ -1,11 +1,11 @@
-# Multimodal PDF Chat
+# Text PDF Chat
 
-A powerful application that allows users to chat with PDF documents using multimodal AI capabilities.
+A streamlined application that allows users to chat with PDF documents using text-based RAG (Retrieval-Augmented Generation).
 
 ## Features
 
 - Chat with PDF documents using natural language
-- Support for text, tables, and images within PDFs
+- Efficient text extraction and processing
 - Two modes of operation:
   - Use a preloaded collection of documents
   - Upload your own PDFs for analysis
@@ -37,9 +37,8 @@ To preprocess a collection of documents for the preloaded mode:
 ## Project Structure
 
 - `app.py`: Main Streamlit application
-- `utils/`: Utility functions for document processing and UI
-- `preprocess.py`: Script for preprocessing individual documents
-- `batch_preprocess.py`: Script for batch preprocessing of documents
+- `utils/`: Utility functions for text processing and UI
+- `utils/text_processor.py`: Text extraction and summarization
 - `preprocessed_data/`: Directory for storing preprocessed document collections
 
 ## Requirements

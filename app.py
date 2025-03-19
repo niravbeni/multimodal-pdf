@@ -1,5 +1,5 @@
 """
-Multimodal PDF Chat - Main Application
+Text PDF Chat - Simple Text-based RAG System
 """
 from utils.sqlite_fix import fix_sqlite
 fix_sqlite()
@@ -26,30 +26,21 @@ from langchain.storage import InMemoryStore
 from langchain.schema.document import Document
 from langchain.retrievers.multi_vector import MultiVectorRetriever
 from langchain_chroma import Chroma
-from utils.rag_chain import (
-    parse_docs, build_prompt, get_conversational_rag_chain,
-    create_multimodal_retriever, create_fallback_retriever
-)
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Add the project directory to the Python path to fix import issues
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import local modules
-from utils.helpers import save_uploaded_file, ensure_document_format
-from utils.helpers import load_preprocessed_data, ensure_chroma_directory, display_conversation
+from utils.helpers import save_uploaded_file, load_preprocessed_data, ensure_chroma_directory, display_conversation
 from utils.html_templates import inject_css, bot_template, user_template
-from utils.document_processor import (
-    UNSTRUCTURED_AVAILABLE, process_pdfs_with_unstructured, 
-    get_pdf_text_fallback, summarize_elements, process_fallback_documents,
-    generate_missing_summaries
-)
+from utils.text_processor import process_pdf_text, summarize_text_chunks
 
-# Suppress warnings (this won't affect the PyTorch warnings but helps with other libraries)
+# Suppress warnings
 warnings.filterwarnings("ignore")
 logging.getLogger().setLevel(logging.ERROR)
 
 # Workaround for PyTorch error in Streamlit file watcher
-# This prevents Streamlit from watching PyTorch modules which can cause errors
 import streamlit.watcher.path_watcher
 original_watch_dir = streamlit.watcher.path_watcher.watch_dir
 
@@ -97,39 +88,18 @@ def get_embeddings():
     """Cache the embeddings model to avoid reloading it"""
     return OpenAIEmbeddings()
 
-def parse_docs(docs):
-    """Split base64-encoded images and texts (like the example)"""
-    b64_images = []
-    texts = []
-    for doc in docs:
-        # Check if this is a base64 image
-        if isinstance(doc, str):
-            try:
-                import base64
-                base64.b64decode(doc)
-                b64_images.append(doc)
-            except Exception:
-                pass  # Not a valid base64 string
-        else:
-            texts.append(doc)
-    
-    return {"images": b64_images, "texts": texts}
-
 def build_prompt(kwargs):
-    """Build a prompt that includes text context and images (like the example)"""
-    docs_by_type = kwargs["context"]
+    """Build a prompt for the RAG system"""
+    context = kwargs["context"]
     user_question = kwargs["question"]
     chat_history = kwargs.get("chat_history", [])
 
     context_text = ""
-    if len(docs_by_type["texts"]) > 0:
-        for text_element in docs_by_type["texts"]:
-            if hasattr(text_element, 'text'):
-                context_text += text_element.text + "\n\n"
-            elif hasattr(text_element, 'page_content'):
-                context_text += text_element.page_content + "\n\n"
-            else:
-                context_text += str(text_element) + "\n\n"
+    for document in context:
+        if hasattr(document, 'page_content'):
+            context_text += document.page_content + "\n\n"
+        else:
+            context_text += str(document) + "\n\n"
 
     # Format chat history
     chat_history_text = ""
@@ -138,32 +108,22 @@ def build_prompt(kwargs):
             role = "Human" if msg.type == "human" else "Assistant"
             chat_history_text += f"{role}: {msg.content}\n"
 
-    # Construct prompt with context (like the example)
+    # Construct prompt with context
     prompt_template = f"""
-    Answer the question based only on the following context, which can include text, tables, and images.
+    Answer the question based only on the following context:
     
     Context: {context_text}
     
     {chat_history_text}
     
     Question: {user_question}
+    
+    Provide a clear, detailed answer that directly addresses the question. If you can't answer based on the provided context, simply state that you don't have enough information.
     """
-
-    prompt_content = [{"type": "text", "text": prompt_template}]
-
-    # Add images to the prompt if available (like the example)
-    if len(docs_by_type["images"]) > 0:
-        for image in docs_by_type["images"]:
-            prompt_content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-                }
-            )
 
     return ChatPromptTemplate.from_messages(
         [
-            HumanMessage(content=prompt_content),
+            HumanMessage(content=prompt_template),
         ]
     )
 
@@ -176,7 +136,7 @@ def get_conversational_rag_chain(retriever, model):
     
     chain = (
         {
-            "context": retriever | RunnableLambda(parse_docs),
+            "context": retriever,
             "question": RunnablePassthrough(),
             "chat_history": lambda x: memory.chat_memory.messages
         }
@@ -228,7 +188,7 @@ def load_preloaded_collection():
             if documents and (not summaries or len(summaries) == 0):
                 status.update(label="No summaries found. Generating summaries...")
                 model = get_openai_model("gpt-4o-mini")
-                summaries = generate_missing_summaries(documents, model)
+                summaries = summarize_text_chunks(documents, model)
             
             # Handle mismatch between documents and summaries
             elif documents and summaries and len(documents) != len(summaries):
@@ -236,485 +196,247 @@ def load_preloaded_collection():
                     # Generate missing summaries
                     status.update(label=f"Generating {len(documents) - len(summaries)} missing summaries...")
                     model = get_openai_model("gpt-4o-mini")
-                    missing_summaries = generate_missing_summaries(documents[len(summaries):], model)
+                    missing_summaries = summarize_text_chunks(documents[len(summaries):], model)
                     summaries.extend(missing_summaries)
                 else:
                     # Trim excess summaries
                     status.update(label="Trimming excess summaries...")
                     summaries = summaries[:len(documents)]
             
-            # Initialize embeddings
-            status.update(label="Initializing embeddings...")
-            embeddings = get_embeddings()
+            # Create retriever
+            status.update(label="Creating retriever...")
+            retriever = create_text_retriever(documents, summaries, get_embeddings())
             
-            # Create a unique ChromaDB collection for this session
-            status.update(label="Setting up vector store...")
-            chroma_dir = ensure_chroma_directory()
-            collection_name = f"preloaded_rag_{uuid.uuid4().hex[:8]}"
-            
-            vectorstore = Chroma(
-                collection_name=collection_name,
-                embedding_function=embeddings,
-                persist_directory=chroma_dir
-            )
-            
-            store = InMemoryStore()
-            id_key = "doc_id"
-            
-            retriever = MultiVectorRetriever(
-                vectorstore=vectorstore,
-                docstore=store,
-                id_key=id_key,
-            )
-            
-            # Add documents and summaries to the retriever
-            if documents and summaries:
-                doc_ids = [str(uuid.uuid4()) for _ in documents]
-                summary_docs = [
-                    Document(page_content=summary, metadata={id_key: doc_ids[i]})
-                    for i, summary in enumerate(summaries)
-                ]
-                
-                # Add documents to vectorstore
-                status.update(label=f"Adding {len(summary_docs)} documents to vectorstore...")
-                retriever.vectorstore.add_documents(summary_docs)
-                
-                # Add original documents to docstore
-                status.update(label="Adding documents to docstore...")
-                retriever.docstore.mset(list(zip(doc_ids, documents)))
-                
-                # Create the conversation chain
-                status.update(label="Setting up conversation chain...")
-                model = get_openai_model("gpt-4o-mini")
-                chain, memory = get_conversational_rag_chain(retriever, model)
-                
-                status.update(label=f"Successfully loaded {len(documents)} documents!", state="complete")
-                return chain, memory
-            else:
-                status.update(label="Error: No documents or summaries found in preprocessed data", state="error")
-                return None
-            
+            status.update(label="Collection loaded successfully!", state="complete")
+            return retriever
     except Exception as e:
-        error_msg = f"Error loading preprocessed collection: {str(e)}"
+        error_msg = f"Error loading preloaded collection: {str(e)}\n{traceback.format_exc()}"
         st.error(error_msg)
         return None
 
-def initialize_session_state():
-    """Initialize all session state variables"""
-    if "initialized" not in st.session_state:
-        st.session_state.initialized = True
-        st.session_state.mode = "preloaded"
-        st.session_state.rag_chain = None
-        st.session_state.memory = None
-        st.session_state.processing_complete = False
-        st.session_state.max_displayed_messages = 10
-        st.session_state.mode_changed = False
-        st.session_state.show_chat_history = True
-        # Add variables to store preloaded mode state
-        st.session_state.preloaded_chain = None
-        st.session_state.preloaded_memory = None
-        st.session_state.preloaded_complete = False
-        # Add variables to store upload mode state
-        st.session_state.upload_chain = None
-        st.session_state.upload_memory = None
-        st.session_state.upload_complete = False
-        # Add variables to store uploaded files state
-        st.session_state.uploaded_files = None
-        st.session_state.files_processed = False
-        # Add variable to track if we should clear files
-        st.session_state.clear_files = False
-        st.session_state.show_success = False
-
-def on_file_upload():
-    """Callback for file uploader changes"""
-    if "pdf_uploader" in st.session_state:
-        pdf_docs = st.session_state.pdf_uploader
-        if pdf_docs is not None:
-            st.session_state.uploaded_files = pdf_docs
-            if not pdf_docs:  # Empty list means files were removed
-                st.session_state.files_processed = False
-
-def handle_mode_change():
-    """Handle mode change with proper state management"""
-    new_mode = "preloaded" if st.session_state.mode_radio == "Use Trend Report Collection" else "upload"
-    
-    if new_mode != st.session_state.mode:
-        if new_mode == "upload":
-            # Restore upload mode state
-            st.session_state.rag_chain = st.session_state.upload_chain
-            st.session_state.memory = st.session_state.upload_memory
-            st.session_state.processing_complete = st.session_state.upload_complete
-        else:
-            # Save upload mode state before switching
-            st.session_state.upload_chain = st.session_state.rag_chain
-            st.session_state.upload_memory = st.session_state.memory
-            st.session_state.upload_complete = st.session_state.processing_complete
-            # Restore preloaded mode state
-            st.session_state.rag_chain = st.session_state.preloaded_chain
-            st.session_state.memory = st.session_state.preloaded_memory
-            st.session_state.processing_complete = st.session_state.preloaded_complete
-        
-        st.session_state.mode = new_mode
-        st.session_state.mode_changed = True
-
-def inject_css():
-    """Inject custom CSS styles"""
-    return """
-        <style>
-            /* Style for processed documents state */
-            .processed-docs .stTextInput input {
-                border: 2px solid #28a745 !important;
-                background-color: #f8fff9 !important;
-            }
-            
-            /* Make sidebar text smaller */
-            .css-163ttbj {  /* sidebar */
-                font-size: 0.8rem;
-            }
-            
-            /* Adjust sidebar header sizes */
-            .css-zt5igj {  /* sidebar headers */
-                font-size: 1rem;
-            }
-            
-            /* Reduce spacing in sidebar */
-            .css-1544g2n {  /* sidebar padding */
-                padding: 1rem 0.5rem;
-            }
-            
-            /* Adjust success message size in sidebar */
-            .sidebar .stSuccess {
-                font-size: 0.8rem;
-                padding: 0.5rem;
-            }
-            
-            /* Basic chat message styling */
-            [data-testid="stChatMessage"] {
-                padding: 2rem 0;
-            }
-            
-            /* Style user messages */
-            [data-testid="stChatMessage"][data-chat-message-user-name="user"] {
-                background-color: white;
-            }
-            
-            /* Style assistant messages */
-            [data-testid="stChatMessage"][data-chat-message-user-name="assistant"] {
-                background-color: #f7f7f8;
-                position: relative;
-            }
-            
-            /* Add padding to chat message container */
-            .stChatMessage {
-                padding-left: 2rem !important;
-                padding-right: 2rem !important;
-                display: flex !important;
-                gap: 1.5rem !important;  /* Add gap between avatar and content */
-            }
-            
-            /* Adjust the avatar container */
-            .stChatMessage > div:first-child {
-                position: relative !important;
-                left: 0 !important;
-            }
-            
-            /* Adjust the content container spacing */
-            .stChatMessageContent {
-                flex: 1 !important;
-                padding-left: 1rem !important;
-                padding-right: 2rem !important;
-            }
-        </style>
-    """
-
-def cleanup_temp_files(pdf_paths):
-    """Clean up temporary PDF files after processing"""
-    for path in pdf_paths:
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-        except Exception as e:
-            st.warning(f"Could not remove temporary file {path}: {e}")
-
-def cleanup_old_collections():
-    """Clean up ChromaDB collections older than 24 hours"""
+def create_text_retriever(text_chunks, summaries, embeddings):
+    """Create a MultiVectorRetriever for text-only content"""
+    # Create a unique ChromaDB collection
     chroma_dir = ensure_chroma_directory()
-    current_time = time.time()
+    collection_name = f"text_rag_{uuid.uuid4().hex[:8]}"
     
-    try:
-        for collection_dir in os.listdir(chroma_dir):
-            collection_path = os.path.join(chroma_dir, collection_dir)
-            if os.path.isdir(collection_path):
-                # Check if directory is older than 24 hours
-                if current_time - os.path.getctime(collection_path) > 86400:  # 24 hours in seconds
-                    shutil.rmtree(collection_path)
-    except Exception as e:
-        st.warning(f"Could not clean up old collections: {e}")
-
-def main():
-    # Add cleanup of old collections at start
-    cleanup_old_collections()
-    
-    # Set up Streamlit page configuration
-    st.set_page_config(
-        page_title="Multimodal PDF Chat",
-        page_icon="📚",
-        layout="wide",
-        initial_sidebar_state="expanded",
-        menu_items=None
+    vectorstore = Chroma(
+        collection_name=collection_name,
+        embedding_function=embeddings,
+        persist_directory=chroma_dir
     )
     
+    store = InMemoryStore()
+    id_key = "doc_id"
+    
+    retriever = MultiVectorRetriever(
+        vectorstore=vectorstore,
+        docstore=store,
+        id_key=id_key,
+    )
+    
+    # Add text documents with summaries
+    doc_ids = [str(uuid.uuid4()) for _ in range(len(summaries))]
+    summary_docs = [
+        Document(page_content=summary, metadata={id_key: doc_ids[i]})
+        for i, summary in enumerate(summaries)
+    ]
+    
+    retriever.vectorstore.add_documents(summary_docs)
+    retriever.docstore.mset(list(zip(doc_ids, text_chunks[:len(summaries)])))
+    
+    return retriever
+
+def initialize_session_state():
+    """Initialize session state variables"""
+    if "conversation" not in st.session_state:
+        st.session_state.conversation = []
+    
+    if "rag_chain" not in st.session_state:
+        st.session_state.rag_chain = None
+    
+    if "memory" not in st.session_state:
+        st.session_state.memory = None
+    
+    if "mode" not in st.session_state:
+        st.session_state.mode = "upload"  # Default to upload mode
+    
+    if "temp_pdf_files" not in st.session_state:
+        st.session_state.temp_pdf_files = []
+
+def on_file_upload():
+    """Clear conversation when new files are uploaded"""
+    st.session_state.conversation = []
+    st.session_state.rag_chain = None
+    st.session_state.memory = None
+
+def handle_mode_change():
+    """Handle changes in the application mode"""
+    st.session_state.conversation = []
+    st.session_state.rag_chain = None
+    st.session_state.memory = None
+
+def cleanup_temp_files(pdf_paths):
+    """Clean up temporary PDF files"""
+    try:
+        for path in pdf_paths:
+            if os.path.exists(path) and path.startswith("./temp_pdf_files/"):
+                os.remove(path)
+                print(f"Removed temporary file: {path}")
+    except Exception as e:
+        print(f"Error cleaning up temp files: {e}")
+
+def process_uploaded_files(uploaded_files):
+    """Process uploaded PDF files and create a retriever"""
+    temp_dir = "./temp_pdf_files"
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    pdf_paths = []
+    for uploaded_file in uploaded_files:
+        temp_path = save_uploaded_file(uploaded_file, temp_dir)
+        pdf_paths.append(temp_path)
+    
+    if not pdf_paths:
+        st.error("No valid PDF files uploaded!")
+        return None
+    
+    # Process the PDFs to extract text
+    with st.status("Processing PDFs...") as status:
+        try:
+            # Extract text from PDFs
+            status.update(label="Extracting text from PDFs...")
+            text_chunks = process_pdf_text(pdf_paths)
+            
+            if not text_chunks:
+                status.update(label="❌ No text content extracted from PDFs!", state="error")
+                st.error("Could not extract any text from the provided PDFs. Please try different files.")
+                return None
+            
+            # Generate summaries for better retrieval
+            status.update(label=f"Generating summaries for {len(text_chunks)} text chunks...")
+            model = get_openai_model("gpt-4o-mini")
+            summaries = summarize_text_chunks(text_chunks, model)
+            
+            # Create retriever
+            status.update(label="Creating retriever...")
+            embeddings = get_embeddings()
+            retriever = create_text_retriever(text_chunks, summaries, embeddings)
+            
+            # Save the temporary PDF paths for cleanup
+            st.session_state.temp_pdf_files = pdf_paths
+            
+            status.update(label="✅ PDFs processed successfully!", state="complete")
+            return retriever
+            
+        except Exception as e:
+            error_msg = f"Error processing PDFs: {str(e)}\n{traceback.format_exc()}"
+            status.update(label=f"❌ {error_msg}", state="error")
+            st.error(error_msg)
+            return None
+
+def main():
     # Initialize session state
     initialize_session_state()
     
-    # Check if we need to rerun due to mode change
-    if st.session_state.mode_changed:
-        st.session_state.mode_changed = False
-        st.rerun()
+    # Page configuration
+    st.set_page_config(page_title="Text PDF Chat", page_icon="📄", layout="wide")
     
-    # Add CSS for styling
-    st.markdown(inject_css(), unsafe_allow_html=True)
+    # Inject custom CSS
+    inject_css()
     
-    # Display the header
-    st.header("📚 Multimodal PDF LLM")
-
-    # Mode selection in sidebar - do this before main content
+    # Sidebar
     with st.sidebar:
-        st.subheader("Mode Selection")
+        st.title("Text PDF Chat")
+        st.markdown("---")
         
-        # Add radio with key and on_change callback
-        st.radio(
+        # Mode selection
+        mode = st.radio(
             "Choose mode:",
-            ["Use Trend Report Collection", "Upload Your Own PDFs"],
+            ["Upload PDFs", "Use Preloaded Collection"],
             key="mode_radio",
-            index=0 if st.session_state.mode == "preloaded" else 1,
+            index=0 if st.session_state.mode == "upload" else 1,
             on_change=handle_mode_change
         )
-
-        # Clear all messages button
-        if st.button("Clear All Messages"):
-            if "memory" in st.session_state and st.session_state.memory:
-                # Only clear the chat messages
-                st.session_state.memory.chat_memory.messages = []
-                st.rerun()
-
-    # Display appropriate status message based on mode
-    if not st.session_state.processing_complete:
-        if st.session_state.mode == "preloaded":
-            st.info("Please click 'Load Trend Report Collection' in the sidebar to get started.")
-        else:
-            st.info("Please upload and process your PDFs in the sidebar to get started.")
-    else:
-        st.success("You can now ask questions about your documents.")
-
-    # Container for chat interface
-    chat_container = st.container()
-    
-    with chat_container:
-        # Add class to form based on processing state
-        form_class = "processed-docs" if st.session_state.processing_complete else ""
         
-        # Chat input form at the top with dynamic class
-        with st.form(key='chat_form', clear_on_submit=True):
-            # Add the class to a div wrapper
-            st.markdown(f'<div class="{form_class}">', unsafe_allow_html=True)
-            
-            cols = st.columns([8, 1])
-            with cols[0]:
-                user_question = st.text_input(
-                    "Ask a question about your documents:",
-                    key="user_question",
-                    label_visibility="collapsed"
-                )
-            
-            with cols[1]:
-                submit_button = st.form_submit_button(
-                    "Send",
-                    use_container_width=True
-                )
-            
-            # Close the div wrapper
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Handle form submission
-            if submit_button and user_question:
-                if st.session_state.rag_chain and st.session_state.memory:
-                    handle_userinput(user_question, st.session_state.rag_chain, st.session_state.memory)
-                elif not st.session_state.processing_complete:
-                    if st.session_state.mode == "preloaded":
-                        st.warning("Please load the preloaded collection first!")
-                    else:
-                        st.warning("Please upload and process your PDFs first!")
+        st.session_state.mode = "upload" if mode == "Upload PDFs" else "preloaded"
         
-        # Display conversation history below the input form
-        if st.session_state.memory and st.session_state.processing_complete:
-            display_conversation(st.session_state.memory)
-
-    with st.sidebar:
-        # Message display settings
-        st.subheader("Display Settings")
-        
-        # Add chat history toggle with immediate rerun
-        show_history = st.toggle("Chat History", value=st.session_state.show_chat_history)
-        if show_history != st.session_state.show_chat_history:
-            st.session_state.show_chat_history = show_history
-            st.rerun()
-        
-        # Only show max messages slider if chat history is enabled
-        if show_history:
-            max_messages = st.slider("Max messages to display", 2, 100, 10)
-            if max_messages != st.session_state.max_displayed_messages:
-                st.session_state.max_displayed_messages = max_messages
-                st.rerun()
-        
-        # Only show upload section if in upload mode
         if st.session_state.mode == "upload":
-            st.subheader("Document Processing")
+            # File uploader widget
+            uploaded_files = st.file_uploader(
+                "Upload your PDFs",
+                accept_multiple_files=True,
+                type="pdf",
+                help="Upload one or more PDF files to chat with",
+                on_change=on_file_upload
+            )
             
-            # Create a container for file uploader
-            uploader_container = st.container()
+            process_button = st.button("Process PDFs", type="primary")
             
-            with uploader_container:
-                # File uploader with callback
-                pdf_docs = st.file_uploader(
-                    "Upload your PDFs here and click on **Process Documents** \n \n Processing is done in a single batch.", 
-                    accept_multiple_files=True,
-                    type=["pdf"],
-                    key="pdf_uploader",
-                    on_change=on_file_upload
-                )
+            if process_button and uploaded_files:
+                # Process the uploaded files
+                retriever = process_uploaded_files(uploaded_files)
                 
-                # Show files if they exist (using session state)
-                if st.session_state.uploaded_files:
-                    st.write("Currently loaded files:")
-                    for file in st.session_state.uploaded_files:
-                        st.write(f"- {file.name}")
-            
-            process_button = st.button("Process Documents")
-            
-            # Show success message after process button
-            if st.session_state.show_success and st.session_state.processing_complete:
-                st.success(f"Successfully processed your documents!")
-            
-            if process_button and pdf_docs:
-                try:
-                    # Show loading message without spinner
-                    loading_message = st.info("Please wait. This may take a few minutes 🙂")
-                    
-                    # Save uploaded files
-                    pdf_paths = [save_uploaded_file(pdf) for pdf in pdf_docs]
-                    st.write("📄 Processing files:", ", ".join(path.split('/')[-1] for path in pdf_paths))
-                    
-                    # Configure models - use cached versions
+                if retriever:
+                    # Create the RAG chain
                     model = get_openai_model("gpt-4o-mini")
-                    embeddings = get_embeddings()
-                    
-                    # Process documents without duplicate spinner
-                    unstructured_status = "✅" if UNSTRUCTURED_AVAILABLE else "❌"
-                    st.write(f"Unstructured API: {unstructured_status}")
-                    
-                    if UNSTRUCTURED_AVAILABLE:
-                        try:
-                            st.write("🔄 Using Unstructured for processing...")
-                            texts, tables, images = process_pdfs_with_unstructured(pdf_paths)
-                            
-                            if texts or tables or images:
-                                st.write(f"Extracted: {len(texts)} texts, {len(tables)} tables, {len(images)} images")  # Debug info
-                                # Summarize elements
-                                text_summaries, table_summaries, image_summaries = summarize_elements(
-                                    texts, tables, images, model
-                                )
-                                
-                                # Create retriever and chain
-                                retriever = create_multimodal_retriever(
-                                    texts, tables, images,
-                                    text_summaries, table_summaries, image_summaries,
-                                    embeddings
-                                )
-                            else:
-                                st.warning("No content extracted. Falling back to PyPDF2.")
-                                documents = get_pdf_text_fallback(pdf_paths)
-                                text_chunks, summaries = process_fallback_documents(documents, model)
-                                retriever = create_fallback_retriever(text_chunks, summaries, embeddings)
-                        except Exception as e:
-                            st.warning(f"Error with Unstructured processing: {str(e)}. Falling back to PyPDF2.")
-                            documents = get_pdf_text_fallback(pdf_paths)
-                            text_chunks, summaries = process_fallback_documents(documents, model)
-                            retriever = create_fallback_retriever(text_chunks, summaries, embeddings)
-                    else:
-                        st.info("Using PyPDF2 for text extraction.")
-                        documents = get_pdf_text_fallback(pdf_paths)
-                        text_chunks, summaries = process_fallback_documents(documents, model)
-                        retriever = create_fallback_retriever(text_chunks, summaries, embeddings)
-                    
-                    # Create RAG chain
-                    rag_chain, memory = get_conversational_rag_chain(retriever, model)
-                    
-                    # Save to both current and upload mode states
-                    st.session_state.rag_chain = rag_chain
-                    st.session_state.memory = memory
-                    st.session_state.processing_complete = True
-                    st.session_state.upload_chain = rag_chain
-                    st.session_state.upload_memory = memory
-                    st.session_state.upload_complete = True
-                    
-                    # Cleanup
-                    cleanup_temp_files(pdf_paths)
-                    
-                    # Clear loading message before rerun
-                    loading_message.empty()
-                    st.session_state.files_processed = True
-                    st.session_state.show_success = True
-                    st.rerun()
-                    
-                except Exception as e:
-                    cleanup_temp_files(pdf_paths)  # Clean up even if processing fails
-                    error_msg = f"Error processing documents: {str(e)}"
-                    st.error(error_msg)
-                    
-        elif st.session_state.mode == "preloaded":
-            st.subheader("Trend Report Collection")
+                    st.session_state.rag_chain, st.session_state.memory = get_conversational_rag_chain(
+                        retriever, model
+                    )
             
-            # Information about the collection
-            preprocessed_exists = os.path.exists(PREPROCESSED_COLLECTION_FILE)
-            if not preprocessed_exists:
-                st.error(f"Collection file not found at: {PREPROCESSED_COLLECTION_FILE}")
-                st.write("Please ensure your preprocessed data is in the correct location:")
-                st.code(f"./preprocessed_data/primary_collection.joblib")
+        else:  # Preloaded collection mode
+            st.info("Using preloaded PDF collection")
             
-            # Button to load the preloaded collection
-            load_button = st.button("Load Trend Report Collection")
-            
-            # Show success message after load button
-            if st.session_state.processing_complete:
-                st.success(f"Successfully loaded trend report collection!")
+            load_button = st.button("Load Collection", type="primary")
             
             if load_button:
-                # Show loading message without spinner
-                loading_message = st.info("Please wait. This may take a few minutes 🙂")
+                # Load the preloaded collection
+                retriever = load_preloaded_collection()
                 
-                result = load_preloaded_collection()
-                if result:
-                    rag_chain, memory = result
-                    # Update both current and preloaded states
-                    st.session_state.rag_chain = rag_chain
-                    st.session_state.memory = memory
-                    st.session_state.processing_complete = True
-                    st.session_state.preloaded_chain = rag_chain
-                    st.session_state.preloaded_memory = memory
-                    st.session_state.preloaded_complete = True
-                    
-                    # Clear loading message before rerun
-                    loading_message.empty()
-                    st.rerun()
-
-        # Add disclaimer at the bottom of sidebar
-        st.markdown("<br>" * 3, unsafe_allow_html=True)
-        st.markdown("""
-        <div style='font-size: 0.7rem; color: #666; margin-top: 3rem;'>
-        <p><em>This application uses ChatGPT and can make mistakes. <br>OpenAI doesn't use IDEO workspace data to train its models.</em></p>
-        </div>
-        """, unsafe_allow_html=True)
+                if retriever:
+                    # Create the RAG chain
+                    model = get_openai_model("gpt-4o-mini")
+                    st.session_state.rag_chain, st.session_state.memory = get_conversational_rag_chain(
+                        retriever, model
+                    )
+        
+        # About section
+        st.markdown("---")
+        st.markdown(
+            """
+            ### About
+            
+            This application allows you to chat with your PDF documents.
+            Upload PDFs or use the preloaded collection, then ask questions
+            about their content.
+            
+            Powered by:
+            - LangChain
+            - OpenAI
+            - ChromaDB
+            - Streamlit
+            """
+        )
+    
+    # Main content area
+    st.header("Chat with your PDFs")
+    
+    # Show the conversation
+    display_conversation()
+    
+    # Chat input
+    if st.session_state.rag_chain:
+        user_question = st.chat_input("Ask a question about your PDFs")
+        if user_question:
+            handle_userinput(user_question, st.session_state.rag_chain, st.session_state.memory)
+    else:
+        # Display help message if no RAG chain is available
+        if st.session_state.mode == "upload":
+            if "uploaded_files" not in locals() or not uploaded_files:
+                st.info("👆 Upload your PDFs using the sidebar and click 'Process PDFs' to start chatting")
+            else:
+                st.info("👆 Click 'Process PDFs' in the sidebar to start chatting")
+        else:
+            st.info("👆 Click 'Load Collection' in the sidebar to start chatting")
 
 if __name__ == "__main__":
     main()

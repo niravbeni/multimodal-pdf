@@ -1,9 +1,11 @@
-tesseract-ocr
-poppler-utils
-libmagic1
-libgl1-mesa-glx
-libglib2.0-0
-libsm6
-libxext6
-libxrender1
-libfontconfig1 
+# No system packages required for text-only processing
+# The following packages were previously used for OCR/image processing:
+# tesseract-ocr
+# poppler-utils
+# libmagic1
+# libgl1-mesa-glx
+# libglib2.0-0
+# libsm6
+# libxext6
+# libxrender1
+# libfontconfig1 
