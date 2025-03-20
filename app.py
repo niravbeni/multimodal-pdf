@@ -208,7 +208,7 @@ def handle_user_input(user_question, rag_chain):
             # Apply formatting to each citation pattern in order:
             
             # 1. First pattern: [filename.pdf, Page X]
-            citation_pattern = r'\[([^,;\]]+\.pdf),\s*Page\s*(\d+)\]'
+            citation_pattern = r'\[([^,;\]]+?\.pdf),\s*Page\s*(\d+)\]'
             
             def citation_replacer(match):
                 pdf_filename = match.group(1)
@@ -217,19 +217,30 @@ def handle_user_input(user_question, rag_chain):
             
             formatted_response = re.sub(citation_pattern, citation_replacer, response_content)
             
-            # 2. Second pattern: [filename.pdf, Page X; Page Y] (same file, multiple pages)
-            same_file_multi_page_pattern = r'\[([^,;\]]+\.pdf),\s*Page\s*(\d+);\s*Page\s*(\d+)\]'
+            # 2. Pattern for multiple pages from same file with 'and': [filename.pdf, Pages X and Y]
+            same_file_and_pattern = r'\[([^,;\]]+?\.pdf),\s*Pages\s*(\d+)\s*and\s*(\d+)\]'
             
-            def same_file_multi_page_replacer(match):
+            def same_file_and_replacer(match):
                 pdf_filename = match.group(1)
-                page_num1 = match.group(2)
-                page_num2 = match.group(3)
-                return f'<span class="citation">[{pdf_filename}, Page {page_num1}; Page {page_num2}]</span>'
+                page1 = match.group(2)
+                page2 = match.group(3)
+                return f'<span class="citation">[{pdf_filename}, Pages {page1} and {page2}]</span>'
             
-            formatted_response = re.sub(same_file_multi_page_pattern, same_file_multi_page_replacer, formatted_response)
+            formatted_response = re.sub(same_file_and_pattern, same_file_and_replacer, formatted_response)
             
-            # 3. Third pattern: [file1.pdf, Page X; file2.pdf, Page Y] (different files)
-            multi_file_pattern = r'\[([^,;\]]+\.pdf),\s*Page\s*(\d+);\s*([^,;\]]+\.pdf),\s*Page\s*(\d+)\]'
+            # 3. Pattern for multiple pages from same file with semicolon: [filename.pdf, Page X; Page Y]
+            same_file_semi_pattern = r'\[([^,;\]]+?\.pdf),\s*Page\s*(\d+);\s*Page\s*(\d+)\]'
+            
+            def same_file_semi_replacer(match):
+                pdf_filename = match.group(1)
+                page1 = match.group(2)
+                page2 = match.group(3)
+                return f'<span class="citation">[{pdf_filename}, Page {page1}; Page {page2}]</span>'
+            
+            formatted_response = re.sub(same_file_semi_pattern, same_file_semi_replacer, formatted_response)
+            
+            # 4. Pattern for multiple files: [filename.pdf, Page X; filename.pdf, Page Y]
+            multi_file_pattern = r'\[([^,;\]]+?\.pdf),\s*Page\s*(\d+);\s*([^,;\]]+?\.pdf),\s*Page\s*(\d+)\]'
             
             def multi_file_replacer(match):
                 pdf1 = match.group(1)
