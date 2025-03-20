@@ -400,9 +400,6 @@ def initialize_session_state():
     
     if "temp_pdf_files" not in st.session_state:
         st.session_state.temp_pdf_files = []
-        
-    if "show_chat_history" not in st.session_state:
-        st.session_state.show_chat_history = True
 
 def reset_conversation():
     """Reset the conversation"""
@@ -478,20 +475,7 @@ def display_conversation():
 
     # Create a container for the messages
     with st.container():
-        # If chat history is disabled, only show the latest exchange
-        if not st.session_state.show_chat_history:
-            if len(messages) >= 2:  # Make sure we have at least one exchange
-                with st.chat_message(messages[-2]["role"], avatar=USER_AVATAR if messages[-2]["role"] == "user" else ASSISTANT_AVATAR):
-                    # Use formatted content if available, otherwise use plain content
-                    content = messages[-2].get("formatted_content", messages[-2]["content"])
-                    st.markdown(content, unsafe_allow_html=True)
-                with st.chat_message(messages[-1]["role"], avatar=USER_AVATAR if messages[-1]["role"] == "user" else ASSISTANT_AVATAR):
-                    # Use formatted content if available, otherwise use plain content
-                    content = messages[-1].get("formatted_content", messages[-1]["content"])
-                    st.markdown(content, unsafe_allow_html=True)
-            return
-        
-        # Otherwise, show full history
+        # Show full history
         for message in messages:
             avatar = USER_AVATAR if message["role"] == "user" else ASSISTANT_AVATAR
             with st.chat_message(message["role"], avatar=avatar):
@@ -556,10 +540,6 @@ def main():
                     # Create the RAG chain
                     model = get_openai_model("gpt-4o-mini")
                     st.session_state.rag_chain = get_rag_chain(retriever, model)
-        
-        # Show history toggle
-        st.checkbox("Show chat history", value=st.session_state.show_chat_history, key="show_history_toggle", 
-                    on_change=lambda: setattr(st.session_state, "show_chat_history", st.session_state.show_history_toggle))
         
         # Clear conversation button
         if st.button("Clear Conversation"):
