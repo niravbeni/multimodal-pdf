@@ -1,202 +1,126 @@
 """
-Text PDF Chat - Simple Preprocessing Script
+Text PDF Chat - Preprocessing Script
+
+This script processes PDF files to extract text, create document chunks,
+and store the processed data for later use in the chat application.
 """
 import os
-import joblib
-import traceback
 import argparse
+import glob
+import logging
+import joblib
+import uuid
+from tqdm import tqdm
 from dotenv import load_dotenv
-from PyPDF2 import PdfReader
-from langchain.schema.document import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain.schema.document import Document
+
+# Import local modules
+from utils.text_processor import process_pdf_text, summarize_text_chunks
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
 
-# Constants
-PRELOADED_PDF_DIRECTORY = "./preloaded_pdfs"
-PREPROCESSED_DATA_PATH = "./preprocessed_data"
-PREPROCESSED_COLLECTION_FILE = os.path.join(PREPROCESSED_DATA_PATH, "primary_collection.joblib")
-
-class TextPreprocessor:
-    def __init__(self, model_name="gpt-4o-mini"):
-        # Ensure output directory exists
-        os.makedirs(PREPROCESSED_DATA_PATH, exist_ok=True)
-        
-        # Initialize embedding and chat models
-        self.embeddings = OpenAIEmbeddings()
-        self.model = ChatOpenAI(model=model_name, temperature=0.2)
+def create_collection_from_pdfs(pdf_paths, output_file, model_name="gpt-4o-mini"):
+    """
+    Process PDFs and create a collection for later use
     
-    def extract_text_from_pdf(self, pdf_path):
-        """Extract text from a PDF file using PyPDF2"""
-        documents = []
-        try:
-            print(f"Processing {os.path.basename(pdf_path)} with PyPDF2...")
-            
-            with open(pdf_path, 'rb') as file:
-                pdf_reader = PdfReader(file)
-                
-                for page_num, page in enumerate(pdf_reader.pages):
-                    try:
-                        text = page.extract_text()
-                        if text and text.strip():
-                            doc = Document(
-                                page_content=text.strip(),
-                                metadata={
-                                    "source": os.path.basename(pdf_path),
-                                    "page": page_num + 1
-                                }
-                            )
-                            documents.append(doc)
-                    except Exception as page_error:
-                        print(f"Error extracting text from page {page_num} of {pdf_path}: {page_error}")
-        except Exception as e:
-            print(f"Error processing {pdf_path} with PyPDF2: {e}")
-        
-        print(f"Extracted {len(documents)} text chunks from {os.path.basename(pdf_path)}")
-        return documents
+    Args:
+        pdf_paths: List of paths to PDF files
+        output_file: Path to save the processed data
+        model_name: OpenAI model to use for summarization
     
-    def chunk_documents(self, documents):
-        """
-        Split documents into smaller chunks for better processing
-        """
-        print(f"Chunking {len(documents)} documents...")
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        if not pdf_paths:
+            logger.error("No PDF files provided")
+            return False
         
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len
-        )
+        # Create OpenAI model
+        logger.info(f"Using OpenAI model: {model_name}")
+        model = ChatOpenAI(model=model_name, temperature=0.2)
         
-        chunked_docs = []
-        for doc in documents:
-            chunks = text_splitter.split_documents([doc])
-            chunked_docs.extend(chunks)
+        # Process PDFs to extract text chunks
+        logger.info(f"Processing {len(pdf_paths)} PDF files")
+        text_chunks = process_pdf_text(pdf_paths)
         
-        print(f"Created {len(chunked_docs)} chunks from {len(documents)} documents")
-        return chunked_docs
-    
-    def summarize_documents(self, documents):
-        """
-        Generate summaries for documents
-        """
-        print(f"Generating summaries for {len(documents)} documents...")
-        summaries = []
-        for i, doc in enumerate(documents):
-            # Print progress
-            if i % 10 == 0:
-                print(f"Summarizing document {i+1}/{len(documents)}...")
-                
-            # Create a summary prompt
-            summary_prompt = f"""
-            Provide a concise, informative summary of the following text.
-            Focus on the key points and main ideas.
-            
-            Text:
-            {doc.page_content[:1000]}  # Limit to first 1000 characters
-            """
-            
-            try:
-                summary = self.model.invoke(summary_prompt).content
-                summaries.append(summary)
-            except Exception as e:
-                print(f"Error generating summary for document {i+1}: {e}")
-                print(traceback.format_exc())
-                # Add a placeholder summary to maintain alignment with documents
-                summaries.append("Summary not available due to processing error.")
+        if not text_chunks:
+            logger.error("No text content extracted from PDFs")
+            return False
         
-        print(f"Generated {len(summaries)} summaries")
-        return summaries
-    
-    def preprocess_collection(self):
-        """
-        Preprocess all PDFs in the primary collection
-        """
-        # Ensure the directories exist
-        os.makedirs(PRELOADED_PDF_DIRECTORY, exist_ok=True)
+        logger.info(f"Extracted {len(text_chunks)} text chunks")
         
-        # Get all PDF files
-        pdf_files = [
-            f for f in os.listdir(PRELOADED_PDF_DIRECTORY) 
-            if f.lower().endswith('.pdf')
-        ]
+        # Generate summaries for text chunks
+        logger.info("Generating summaries for text chunks")
+        summaries = summarize_text_chunks(text_chunks, model)
         
-        print(f"Found {len(pdf_files)} PDF files in {PRELOADED_PDF_DIRECTORY}")
-        
-        if not pdf_files:
-            print(f"No PDF files found in {PRELOADED_PDF_DIRECTORY}! Please add some PDF files.")
-            return
-        
-        # Process PDFs
-        all_documents = []
-        processed_files = []
-        failed_files = []
-        
-        for pdf_file in pdf_files:
-            print(f"\nProcessing {pdf_file} ({len(processed_files) + 1}/{len(pdf_files)})")
-            pdf_path = os.path.join(PRELOADED_PDF_DIRECTORY, pdf_file)
-            
-            try:
-                # Process individual PDF
-                pdf_documents = self.extract_text_from_pdf(pdf_path)
-                
-                if pdf_documents:
-                    all_documents.extend(pdf_documents)
-                    processed_files.append(pdf_file)
-                    print(f"Successfully processed {pdf_file}. Extracted {len(pdf_documents)} chunks.")
-                else:
-                    print(f"No documents extracted from {pdf_file}")
-                    failed_files.append(pdf_file)
-            except Exception as e:
-                print(f"Failed to process {pdf_file}: {e}")
-                print(traceback.format_exc())
-                failed_files.append(pdf_file)
-        
-        print(f"\nDocument extraction complete. Processed {len(processed_files)}/{len(pdf_files)} files.")
-        print(f"Total documents extracted: {len(all_documents)}")
-        
-        if not all_documents:
-            print("No documents were extracted from any PDFs. Cannot continue.")
-            return
-        
-        # Chunk documents for better processing
-        chunked_docs = self.chunk_documents(all_documents)
-        
-        # Generate summaries
-        summaries = self.summarize_documents(chunked_docs)
-        
-        # Prepare data for saving
-        preprocessed_data = {
-            "documents": chunked_docs,
+        # Create metadata
+        metadata = {
             "summaries": summaries,
-            "processed_files": processed_files,
-            "failed_files": failed_files
+            "sources": [os.path.basename(path) for path in pdf_paths],
+            "processed_by": "text_preprocess_script",
+            "collection_id": str(uuid.uuid4()),
         }
         
-        # Save preprocessed data
-        output_path = PREPROCESSED_COLLECTION_FILE
-        print(f"\nSaving preprocessed data to {output_path}")
-        joblib.dump(preprocessed_data, output_path)
-        print("Preprocessing complete!")
+        # Save processed data
+        logger.info(f"Saving processed data to {output_file}")
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        joblib.dump((text_chunks, metadata), output_file)
         
-        return preprocessed_data
+        logger.info("Preprocessing completed successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error preprocessing PDFs: {str(e)}", exc_info=True)
+        return False
 
 def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Preprocess PDF documents for text-based RAG')
-    parser.add_argument('--model', default='gpt-4o-mini', help='OpenAI model to use for summarization')
+    """Main function to run the preprocessing script"""
+    parser = argparse.ArgumentParser(description="Preprocess PDF files for Text PDF Chat")
+    parser.add_argument("--input", "-i", type=str, help="Input directory containing PDF files or specific PDF file")
+    parser.add_argument("--output", "-o", type=str, default="./preprocessed_data/primary_collection.joblib", 
+                         help="Output joblib file path")
+    parser.add_argument("--model", "-m", type=str, default="gpt-4o-mini", 
+                         help="OpenAI model to use for summarization")
+    
     args = parser.parse_args()
     
-    # Ensure OpenAI API key is set
-    if not os.getenv("OPENAI_API_KEY"):
-        print("Error: OPENAI_API_KEY environment variable not set.")
-        print("Please set your OpenAI API key in the .env file or as an environment variable.")
-        return
+    if not args.input:
+        logger.error("Input directory or file is required")
+        return 1
     
-    # Create preprocessor and run
-    preprocessor = TextPreprocessor(model_name=args.model)
-    preprocessor.preprocess_collection()
+    # Check if input is a directory or file
+    if os.path.isdir(args.input):
+        pdf_paths = glob.glob(os.path.join(args.input, "*.pdf"))
+        if not pdf_paths:
+            logger.error(f"No PDF files found in directory: {args.input}")
+            return 1
+    elif os.path.isfile(args.input) and args.input.lower().endswith(".pdf"):
+        pdf_paths = [args.input]
+    else:
+        logger.error(f"Invalid input: {args.input}")
+        return 1
+    
+    # Process PDFs
+    logger.info(f"Found {len(pdf_paths)} PDF files")
+    success = create_collection_from_pdfs(pdf_paths, args.output, args.model)
+    
+    if success:
+        logger.info(f"Preprocessing completed. Output saved to {args.output}")
+        return 0
+    else:
+        logger.error("Preprocessing failed")
+        return 1
 
 if __name__ == "__main__":
-    main()
+    exit(main())
