@@ -583,37 +583,6 @@ def main():
             st.markdown("### Search PDF Collection")
             st.info("Browse and search through our curated collection of PDFs.")
             
-            # Add dummy collection info
-            st.markdown("""
-            **Available Categories:**
-            - Business & Strategy
-            - Technology Trends
-            - Market Research
-            - Innovation Reports
-            
-            **Collection Stats:**
-            - Total PDFs: 150+
-            - Updated: Monthly
-            - Topics: 20+
-            """)
-            
-            search_query = st.text_input("Search collection by keyword", placeholder="e.g., AI trends, market analysis")
-            
-            load_button = st.button("Search Collection", type="primary")
-            
-            if load_button:
-                if search_query:
-                    st.info("🔍 Searching collection... (Dummy functionality for now)")
-                else:
-                    st.warning("Please enter a search term")
-                
-                # Load the preloaded collection (keeping existing functionality for now)
-                retriever = load_preloaded_collection()
-                
-                if retriever:
-                    # Create the RAG chain
-                    model = get_openai_model("gpt-4o-mini")
-                    st.session_state.rag_chain = get_rag_chain(retriever, model)
         
         # Clear conversation button
         if st.button("Clear Conversation"):
