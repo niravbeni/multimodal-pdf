@@ -33,9 +33,18 @@ from utils.helpers import save_uploaded_file, load_preprocessed_data, ensure_chr
 from utils.html_templates import inject_css
 from utils.text_processor import process_pdf_text, summarize_text_chunks
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Suppress warnings
 warnings.filterwarnings("ignore")
-logging.getLogger().setLevel(logging.ERROR)
 
 # Load environment variables
 load_dotenv()
@@ -80,7 +89,12 @@ def build_rag_prompt(context, question, chat_history=None):
     for i, doc in enumerate(context):
         source = doc.metadata.get("source", "Unknown")
         page = doc.metadata.get("page", "N/A")
-        context_text += f"[Document {i+1}: {source}, Page {page}]\n{doc.page_content}\n\n"
+        
+        # Log each context entry for debugging
+        logger.info(f"Context entry {i}: source={source}, page={page}")
+        
+        # Simple format without the PAGE NUMBER emphasis
+        context_text += f"[Source: {source}, Page {page}]\n{doc.page_content}\n\n"
 
     # Format chat history if provided
     chat_history_text = ""
@@ -89,7 +103,7 @@ def build_rag_prompt(context, question, chat_history=None):
             role = "Human" if message["role"] == "user" else "Assistant"
             chat_history_text += f"{role}: {message['content']}\n"
 
-    # Construct prompt with context and citation instructions
+    # Construct prompt with simpler citation instructions
     prompt = f"""
     Answer the question based only on the following context:
     
@@ -100,10 +114,13 @@ def build_rag_prompt(context, question, chat_history=None):
     Question: {question}
     
     Provide a clear, detailed answer that directly addresses the question.
-    Include citations to the source documents in your answer using the format [Document title, Page X].
-    For example: "According to [Document A, Page 5], the main concept is..."
     
-    If multiple sources support a statement, cite them all like: [Document A, Page 5; Document B, Page 3]
+    Include citations to the source documents in your answer using the exact PDF filename in this format: [PDF_filename, Page X].
+    For example: "According to [example.pdf, Page 5], the main concept is..."
+    
+    Make sure you use the exact page number shown in the context for each source.
+    
+    If multiple sources support a statement, cite them all like: [document1.pdf, Page 5; document2.pdf, Page 3]
     
     If you can't answer based on the provided context, simply state that you don't have enough information.
     """
@@ -116,14 +133,40 @@ def get_rag_chain(retriever, model):
         # Retrieve relevant documents
         docs = retriever.get_relevant_documents(query)
         
+        # Debug: Log the retrieved documents with their metadata
+        logger.info(f"Retrieved {len(docs)} documents for query: {query}")
+        for i, doc in enumerate(docs):
+            source = doc.metadata.get('source', 'Unknown')
+            page = doc.metadata.get('page', 'Unknown')
+            chunk_id = doc.metadata.get('chunk_id', 'Unknown')
+            
+            # Log detailed information about each retrieved document
+            logger.info(f"Retrieved Doc {i}: source={source}, page={page}, chunk_id={chunk_id}")
+            
+            # Log a sample of the content to see what text is being used
+            content_sample = doc.page_content[:150].replace('\n', ' ')
+            logger.info(f"Content sample: '{content_sample}...'")
+            
+            # Check for specific keywords to track where certain content is found
+            keywords = ["65 or older", "strategic bitcoin reserve", "crypto politicians"]
+            for keyword in keywords:
+                if keyword.lower() in doc.page_content.lower():
+                    logger.info(f"FOUND KEYWORD '{keyword}' in retrieved doc from {source}, page {page}")
+        
         # Get chat history from session state
         chat_history = st.session_state.conversation if "conversation" in st.session_state else []
         
         # Build the prompt
         prompt = build_rag_prompt(docs, query, chat_history)
         
+        # Log the prompt for debugging
+        logger.info(f"Prompt sent to model: {prompt[:500]}...")
+        
         # Generate the response
         response = model.invoke(prompt)
+        
+        # Log the response
+        logger.info(f"Model response: {response.content}")
         
         # Store the retrieved documents in session state for citation tracking
         st.session_state.last_retrieved_docs = docs
@@ -138,7 +181,7 @@ def handle_user_input(user_question, rag_chain):
         return
     
     # Add user message to conversation
-    st.session_state.conversation.append({"role": "user", "content": user_question})
+    st.session_state.conversation.append({"role": "user", "content": user_question, "formatted_content": user_question})
     
     # Display user message immediately
     with st.chat_message("user", avatar=USER_AVATAR):
@@ -157,20 +200,52 @@ def handle_user_input(user_question, rag_chain):
             response_content = response.content
             
             # Format citations for better readability
-            # This replaces citations like [Document.pdf, Page 5] with formatted ones
             import re
-            citation_pattern = r'\[(.*?), Page (\d+)\]'
+            
+            # Log the raw response to see what citations are present
+            logger.info(f"Raw response with citations: {response_content}")
+            
+            # Apply formatting to each citation pattern in order:
+            
+            # 1. First pattern: [filename.pdf, Page X]
+            citation_pattern = r'\[([^,;\]]+\.pdf),\s*Page\s*(\d+)\]'
             
             def citation_replacer(match):
-                doc_name = match.group(1)
+                pdf_filename = match.group(1)
                 page_num = match.group(2)
-                return f'<span class="citation">[{doc_name}, Page {page_num}]</span>'
+                return f'<span class="citation">[{pdf_filename}, Page {page_num}]</span>'
             
-            # Apply the formatting to citations
             formatted_response = re.sub(citation_pattern, citation_replacer, response_content)
             
-            # Add the formatted response to the conversation (without HTML)
-            st.session_state.conversation.append({"role": "assistant", "content": response_content})
+            # 2. Second pattern: [filename.pdf, Page X; Page Y] (same file, multiple pages)
+            same_file_multi_page_pattern = r'\[([^,;\]]+\.pdf),\s*Page\s*(\d+);\s*Page\s*(\d+)\]'
+            
+            def same_file_multi_page_replacer(match):
+                pdf_filename = match.group(1)
+                page_num1 = match.group(2)
+                page_num2 = match.group(3)
+                return f'<span class="citation">[{pdf_filename}, Page {page_num1}; Page {page_num2}]</span>'
+            
+            formatted_response = re.sub(same_file_multi_page_pattern, same_file_multi_page_replacer, formatted_response)
+            
+            # 3. Third pattern: [file1.pdf, Page X; file2.pdf, Page Y] (different files)
+            multi_file_pattern = r'\[([^,;\]]+\.pdf),\s*Page\s*(\d+);\s*([^,;\]]+\.pdf),\s*Page\s*(\d+)\]'
+            
+            def multi_file_replacer(match):
+                pdf1 = match.group(1)
+                page1 = match.group(2)
+                pdf2 = match.group(3)
+                page2 = match.group(4)
+                return f'<span class="citation">[{pdf1}, Page {page1}; {pdf2}, Page {page2}]</span>'
+            
+            formatted_response = re.sub(multi_file_pattern, multi_file_replacer, formatted_response)
+            
+            # Add the formatted response to the conversation (with HTML for persistence)
+            st.session_state.conversation.append({
+                "role": "assistant", 
+                "content": response_content,  # Plain content
+                "formatted_content": formatted_response  # HTML-formatted content with styled citations
+            })
             
             # Display the formatted response with HTML
             message_placeholder.markdown(formatted_response, unsafe_allow_html=True)
@@ -250,13 +325,60 @@ def create_text_retriever(text_chunks, summaries, embeddings):
     
     # Add text documents with summaries
     doc_ids = [str(uuid.uuid4()) for _ in range(len(summaries))]
-    summary_docs = [
-        Document(page_content=summary, metadata={id_key: doc_ids[i]})
-        for i, summary in enumerate(summaries)
-    ]
     
+    # Log page number debug info
+    page_numbers = {}
+    for i, chunk in enumerate(text_chunks[:5]):  # Log first few for debugging
+        if hasattr(chunk, 'metadata') and chunk.metadata:
+            page = chunk.metadata.get('page', 'Unknown')
+            source = chunk.metadata.get('source', 'Unknown')
+            page_numbers[f"{source}-{i}"] = page
+            logger.info(f"Original chunk {i} - Source: {source}, Page: {page}")
+    
+    # Ensure we preserve all metadata from original text chunks in both places
+    summary_docs = []
+    for i, summary in enumerate(summaries):
+        if i < len(text_chunks):
+            # Copy metadata from text chunk to summary doc
+            metadata = {}
+            if hasattr(text_chunks[i], 'metadata') and text_chunks[i].metadata:
+                metadata = text_chunks[i].metadata.copy()
+                
+                # Debug log for first few docs
+                if i < 5:
+                    page = metadata.get('page', 'Unknown')
+                    source = metadata.get('source', 'Unknown')
+                    logger.info(f"Preserving metadata for summary {i} - Source: {source}, Page: {page}")
+            
+            # Add the id_key for the retriever
+            metadata[id_key] = doc_ids[i]
+            summary_doc = Document(page_content=summary, metadata=metadata)
+            summary_docs.append(summary_doc)
+        else:
+            # Fallback if there's a mismatch (shouldn't happen)
+            summary_docs.append(Document(page_content=summary, metadata={id_key: doc_ids[i]}))
+    
+    # Add docs to vectorstore
     retriever.vectorstore.add_documents(summary_docs)
-    retriever.docstore.mset(list(zip(doc_ids, text_chunks[:len(summaries)])))
+    
+    # Store original docs with their full metadata in the docstore
+    original_docs_with_ids = list(zip(doc_ids, text_chunks[:len(summaries)]))
+    retriever.docstore.mset(original_docs_with_ids)
+    
+    # Verify a few documents were stored with correct metadata
+    for i, doc_id in enumerate(doc_ids[:5]):
+        if i < len(text_chunks):
+            # Use mget instead of get - InMemoryStore uses mget
+            stored_docs = retriever.docstore.mget([doc_id])
+            if stored_docs and doc_id in stored_docs:
+                stored_doc = stored_docs[doc_id]
+                if hasattr(stored_doc, 'metadata') and stored_doc.metadata:
+                    page = stored_doc.metadata.get('page', 'Unknown')
+                    source = stored_doc.metadata.get('source', 'Unknown')
+                    logger.info(f"Verified stored doc {i} - ID: {doc_id}, Source: {source}, Page: {page}")
+    
+    # Log page number mapping for reference
+    logger.info(f"Page numbers for first chunks: {page_numbers}")
     
     return retriever
 
@@ -264,6 +386,11 @@ def initialize_session_state():
     """Initialize session state variables"""
     if "conversation" not in st.session_state:
         st.session_state.conversation = []
+    else:
+        # Add formatted_content field to existing messages if needed
+        for message in st.session_state.conversation:
+            if "formatted_content" not in message:
+                message["formatted_content"] = message["content"]
     
     if "rag_chain" not in st.session_state:
         st.session_state.rag_chain = None
@@ -355,16 +482,22 @@ def display_conversation():
         if not st.session_state.show_chat_history:
             if len(messages) >= 2:  # Make sure we have at least one exchange
                 with st.chat_message(messages[-2]["role"], avatar=USER_AVATAR if messages[-2]["role"] == "user" else ASSISTANT_AVATAR):
-                    st.markdown(messages[-2]["content"])
+                    # Use formatted content if available, otherwise use plain content
+                    content = messages[-2].get("formatted_content", messages[-2]["content"])
+                    st.markdown(content, unsafe_allow_html=True)
                 with st.chat_message(messages[-1]["role"], avatar=USER_AVATAR if messages[-1]["role"] == "user" else ASSISTANT_AVATAR):
-                    st.markdown(messages[-1]["content"])
+                    # Use formatted content if available, otherwise use plain content
+                    content = messages[-1].get("formatted_content", messages[-1]["content"])
+                    st.markdown(content, unsafe_allow_html=True)
             return
         
         # Otherwise, show full history
         for message in messages:
             avatar = USER_AVATAR if message["role"] == "user" else ASSISTANT_AVATAR
             with st.chat_message(message["role"], avatar=avatar):
-                st.markdown(message["content"])
+                # Use formatted content if available, otherwise use plain content
+                content = message.get("formatted_content", message["content"])
+                st.markdown(content, unsafe_allow_html=True)
 
 def main():
     # Initialize session state
@@ -378,9 +511,6 @@ def main():
     
     # Sidebar
     with st.sidebar:
-        st.title("Text PDF Chat")
-        st.markdown("---")
-        
         # Mode selection
         mode = st.radio(
             "Choose mode:",
@@ -427,8 +557,6 @@ def main():
                     model = get_openai_model("gpt-4o-mini")
                     st.session_state.rag_chain = get_rag_chain(retriever, model)
         
-        st.markdown("---")
-        
         # Show history toggle
         st.checkbox("Show chat history", value=st.session_state.show_chat_history, key="show_history_toggle", 
                     on_change=lambda: setattr(st.session_state, "show_chat_history", st.session_state.show_history_toggle))
@@ -439,6 +567,7 @@ def main():
 
     # Main content area
     st.header("Chat with your PDFs")
+    st.markdown("---")
     
     # Show the conversation
     display_conversation()
