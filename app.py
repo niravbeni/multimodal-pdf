@@ -6,54 +6,39 @@ fix_sqlite()
 
 import sys
 import os
-import time
-import shutil
-
-import uuid
 import warnings
 import traceback
 import logging
+import uuid
 import joblib
+
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain.storage import InMemoryStore
+from langchain_core.runnables import RunnablePassthrough
 from langchain.schema.document import Document
 from langchain.retrievers.multi_vector import MultiVectorRetriever
 from langchain_chroma import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.storage import InMemoryStore
 
 # Add the project directory to the Python path to fix import issues
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import local modules
-from utils.helpers import save_uploaded_file, load_preprocessed_data, ensure_chroma_directory, display_conversation
-from utils.html_templates import inject_css, bot_template, user_template
+from utils.helpers import save_uploaded_file, load_preprocessed_data, ensure_chroma_directory
+from utils.html_templates import inject_css
 from utils.text_processor import process_pdf_text, summarize_text_chunks
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
 logging.getLogger().setLevel(logging.ERROR)
 
-# Workaround for PyTorch error in Streamlit file watcher
-import streamlit.watcher.path_watcher
-original_watch_dir = streamlit.watcher.path_watcher.watch_dir
-
-def patched_watch_dir(path, *args, **kwargs):
-    if "torch" in path or "_torch" in path or "site-packages" in path:
-        # Skip watching PyTorch-related directories
-        return None
-    return original_watch_dir(path, *args, **kwargs)
-
-streamlit.watcher.path_watcher.watch_dir = patched_watch_dir
-
 # Load environment variables
-load_dotenv()  # Keep this for local development
+load_dotenv()
 
 # Get OpenAI API key from Streamlit secrets or environment variable
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
@@ -72,11 +57,6 @@ if not os.path.exists(PREPROCESSED_DATA_PATH):
     os.makedirs(PREPROCESSED_DATA_PATH, exist_ok=True)
     print(f"Created preprocessed data directory at {PREPROCESSED_DATA_PATH}")
 
-# Check if collection file exists
-if not os.path.exists(PREPROCESSED_COLLECTION_FILE):
-    print(f"Warning: Preprocessed collection file not found at {PREPROCESSED_COLLECTION_FILE}")
-    print("You'll need to run the preprocessing script first or switch to upload mode.")
-
 # Cache expensive operations
 @st.cache_resource
 def get_openai_model(model_name):
@@ -88,83 +68,116 @@ def get_embeddings():
     """Cache the embeddings model to avoid reloading it"""
     return OpenAIEmbeddings()
 
-def build_prompt(kwargs):
+# Define custom avatar paths
+USER_AVATAR = "images/user.png"
+ASSISTANT_AVATAR = "images/ideo.png"
+
+def build_rag_prompt(context, question, chat_history=None):
     """Build a prompt for the RAG system"""
-    context = kwargs["context"]
-    user_question = kwargs["question"]
-    chat_history = kwargs.get("chat_history", [])
-
     context_text = ""
-    for document in context:
-        if hasattr(document, 'page_content'):
-            context_text += document.page_content + "\n\n"
-        else:
-            context_text += str(document) + "\n\n"
+    
+    # Process all context documents with source information
+    for i, doc in enumerate(context):
+        source = doc.metadata.get("source", "Unknown")
+        page = doc.metadata.get("page", "N/A")
+        context_text += f"[Document {i+1}: {source}, Page {page}]\n{doc.page_content}\n\n"
 
-    # Format chat history
+    # Format chat history if provided
     chat_history_text = ""
     if chat_history:
-        for msg in chat_history:
-            role = "Human" if msg.type == "human" else "Assistant"
-            chat_history_text += f"{role}: {msg.content}\n"
+        for message in chat_history:
+            role = "Human" if message["role"] == "user" else "Assistant"
+            chat_history_text += f"{role}: {message['content']}\n"
 
-    # Construct prompt with context
-    prompt_template = f"""
+    # Construct prompt with context and citation instructions
+    prompt = f"""
     Answer the question based only on the following context:
     
     Context: {context_text}
     
     {chat_history_text}
     
-    Question: {user_question}
+    Question: {question}
     
-    Provide a clear, detailed answer that directly addresses the question. If you can't answer based on the provided context, simply state that you don't have enough information.
+    Provide a clear, detailed answer that directly addresses the question.
+    Include citations to the source documents in your answer using the format [Document title, Page X].
+    For example: "According to [Document A, Page 5], the main concept is..."
+    
+    If multiple sources support a statement, cite them all like: [Document A, Page 5; Document B, Page 3]
+    
+    If you can't answer based on the provided context, simply state that you don't have enough information.
     """
 
-    return ChatPromptTemplate.from_messages(
-        [
-            HumanMessage(content=prompt_template),
-        ]
-    )
+    return prompt
 
-def get_conversational_rag_chain(retriever, model):
+def get_rag_chain(retriever, model):
     """Create the RAG chain for conversation"""
-    memory = ConversationBufferMemory(
-        memory_key='chat_history', 
-        return_messages=True
-    )
+    def generate_response(query):
+        # Retrieve relevant documents
+        docs = retriever.get_relevant_documents(query)
+        
+        # Get chat history from session state
+        chat_history = st.session_state.conversation if "conversation" in st.session_state else []
+        
+        # Build the prompt
+        prompt = build_rag_prompt(docs, query, chat_history)
+        
+        # Generate the response
+        response = model.invoke(prompt)
+        
+        # Store the retrieved documents in session state for citation tracking
+        st.session_state.last_retrieved_docs = docs
+        
+        return response
     
-    chain = (
-        {
-            "context": retriever,
-            "question": RunnablePassthrough(),
-            "chat_history": lambda x: memory.chat_memory.messages
-        }
-        | RunnableLambda(build_prompt)
-        | model
-        | StrOutputParser()
-    )
-    
-    return chain, memory
+    return generate_response
 
-def handle_userinput(user_question, rag_chain, memory):
+def handle_user_input(user_question, rag_chain):
     """Process the user question and update the chat"""
     if not user_question:
         return
     
-    with st.spinner("Thinking..."):
+    # Add user message to conversation
+    st.session_state.conversation.append({"role": "user", "content": user_question})
+    
+    # Display user message immediately
+    with st.chat_message("user", avatar=USER_AVATAR):
+        st.markdown(user_question)
+    
+    # Display a typing indicator for the assistant's response
+    with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
+        message_placeholder = st.empty()
+        message_placeholder.markdown("⏳ Thinking...")
+        
         try:
-            response = rag_chain.invoke(user_question)
+            # Generate response
+            response = rag_chain(user_question)
             
-            # Update memory
-            memory.chat_memory.add_user_message(user_question)
-            memory.chat_memory.add_ai_message(response)
+            # Get response content
+            response_content = response.content
             
-            # Rerun to show updated conversation
-            st.rerun()
+            # Format citations for better readability
+            # This replaces citations like [Document.pdf, Page 5] with formatted ones
+            import re
+            citation_pattern = r'\[(.*?), Page (\d+)\]'
+            
+            def citation_replacer(match):
+                doc_name = match.group(1)
+                page_num = match.group(2)
+                return f'<span class="citation">[{doc_name}, Page {page_num}]</span>'
+            
+            # Apply the formatting to citations
+            formatted_response = re.sub(citation_pattern, citation_replacer, response_content)
+            
+            # Add the formatted response to the conversation (without HTML)
+            st.session_state.conversation.append({"role": "assistant", "content": response_content})
+            
+            # Display the formatted response with HTML
+            message_placeholder.markdown(formatted_response, unsafe_allow_html=True)
             
         except Exception as e:
             error_msg = f"Error generating response: {str(e)}"
+            message_placeholder.markdown(f"❌ {error_msg}")
             st.error(error_msg)
 
 def load_preloaded_collection():
@@ -178,7 +191,7 @@ def load_preloaded_collection():
     
     try:
         with st.status("Loading preprocessed collection...") as status:
-            # Use our flexible data loading function
+            # Load data from file
             status.update(label="Loading data from file...")
             documents, metadata = load_preprocessed_data(PREPROCESSED_COLLECTION_FILE)
             
@@ -255,36 +268,18 @@ def initialize_session_state():
     if "rag_chain" not in st.session_state:
         st.session_state.rag_chain = None
     
-    if "memory" not in st.session_state:
-        st.session_state.memory = None
-    
     if "mode" not in st.session_state:
         st.session_state.mode = "upload"  # Default to upload mode
     
     if "temp_pdf_files" not in st.session_state:
         st.session_state.temp_pdf_files = []
+        
+    if "show_chat_history" not in st.session_state:
+        st.session_state.show_chat_history = True
 
-def on_file_upload():
-    """Clear conversation when new files are uploaded"""
+def reset_conversation():
+    """Reset the conversation"""
     st.session_state.conversation = []
-    st.session_state.rag_chain = None
-    st.session_state.memory = None
-
-def handle_mode_change():
-    """Handle changes in the application mode"""
-    st.session_state.conversation = []
-    st.session_state.rag_chain = None
-    st.session_state.memory = None
-
-def cleanup_temp_files(pdf_paths):
-    """Clean up temporary PDF files"""
-    try:
-        for path in pdf_paths:
-            if os.path.exists(path) and path.startswith("./temp_pdf_files/"):
-                os.remove(path)
-                print(f"Removed temporary file: {path}")
-    except Exception as e:
-        print(f"Error cleaning up temp files: {e}")
 
 def process_uploaded_files(uploaded_files):
     """Process uploaded PDF files and create a retriever"""
@@ -309,7 +304,20 @@ def process_uploaded_files(uploaded_files):
             
             if not text_chunks:
                 status.update(label="❌ No text content extracted from PDFs!", state="error")
-                st.error("Could not extract any text from the provided PDFs. Please try different files.")
+                # Add more detailed information about the PDFs
+                pdf_info = "\n".join([f"- {os.path.basename(path)} (Size: {os.path.getsize(path) / 1024:.1f} KB)" for path in pdf_paths])
+                error_msg = f"""
+                Could not extract any text from the provided PDFs. Please try different files.
+                
+                PDF Files attempted:
+                {pdf_info}
+                
+                This could be due to:
+                1. The PDFs containing only scanned images without OCR
+                2. The PDFs having security restrictions
+                3. Text encoded in a non-standard way
+                """
+                st.error(error_msg)
                 return None
             
             # Generate summaries for better retrieval
@@ -334,6 +342,30 @@ def process_uploaded_files(uploaded_files):
             st.error(error_msg)
             return None
 
+def display_conversation():
+    """Display the conversation history using Streamlit's chat interface"""
+    # Get messages
+    messages = st.session_state.conversation
+    if not messages:  # If no messages, return early
+        return
+
+    # Create a container for the messages
+    with st.container():
+        # If chat history is disabled, only show the latest exchange
+        if not st.session_state.show_chat_history:
+            if len(messages) >= 2:  # Make sure we have at least one exchange
+                with st.chat_message(messages[-2]["role"], avatar=USER_AVATAR if messages[-2]["role"] == "user" else ASSISTANT_AVATAR):
+                    st.markdown(messages[-2]["content"])
+                with st.chat_message(messages[-1]["role"], avatar=USER_AVATAR if messages[-1]["role"] == "user" else ASSISTANT_AVATAR):
+                    st.markdown(messages[-1]["content"])
+            return
+        
+        # Otherwise, show full history
+        for message in messages:
+            avatar = USER_AVATAR if message["role"] == "user" else ASSISTANT_AVATAR
+            with st.chat_message(message["role"], avatar=avatar):
+                st.markdown(message["content"])
+
 def main():
     # Initialize session state
     initialize_session_state()
@@ -342,7 +374,7 @@ def main():
     st.set_page_config(page_title="Text PDF Chat", page_icon="📄", layout="wide")
     
     # Inject custom CSS
-    inject_css()
+    st.markdown(inject_css(), unsafe_allow_html=True)
     
     # Sidebar
     with st.sidebar:
@@ -355,7 +387,7 @@ def main():
             ["Upload PDFs", "Use Preloaded Collection"],
             key="mode_radio",
             index=0 if st.session_state.mode == "upload" else 1,
-            on_change=handle_mode_change
+            on_change=reset_conversation
         )
         
         st.session_state.mode = "upload" if mode == "Upload PDFs" else "preloaded"
@@ -367,7 +399,7 @@ def main():
                 accept_multiple_files=True,
                 type="pdf",
                 help="Upload one or more PDF files to chat with",
-                on_change=on_file_upload
+                on_change=reset_conversation
             )
             
             process_button = st.button("Process PDFs", type="primary")
@@ -379,9 +411,7 @@ def main():
                 if retriever:
                     # Create the RAG chain
                     model = get_openai_model("gpt-4o-mini")
-                    st.session_state.rag_chain, st.session_state.memory = get_conversational_rag_chain(
-                        retriever, model
-                    )
+                    st.session_state.rag_chain = get_rag_chain(retriever, model)
             
         else:  # Preloaded collection mode
             st.info("Using preloaded PDF collection")
@@ -395,28 +425,18 @@ def main():
                 if retriever:
                     # Create the RAG chain
                     model = get_openai_model("gpt-4o-mini")
-                    st.session_state.rag_chain, st.session_state.memory = get_conversational_rag_chain(
-                        retriever, model
-                    )
+                    st.session_state.rag_chain = get_rag_chain(retriever, model)
         
-        # About section
         st.markdown("---")
-        st.markdown(
-            """
-            ### About
-            
-            This application allows you to chat with your PDF documents.
-            Upload PDFs or use the preloaded collection, then ask questions
-            about their content.
-            
-            Powered by:
-            - LangChain
-            - OpenAI
-            - ChromaDB
-            - Streamlit
-            """
-        )
-    
+        
+        # Show history toggle
+        st.checkbox("Show chat history", value=st.session_state.show_chat_history, key="show_history_toggle", 
+                    on_change=lambda: setattr(st.session_state, "show_chat_history", st.session_state.show_history_toggle))
+        
+        # Clear conversation button
+        if st.button("Clear Conversation"):
+            reset_conversation()
+
     # Main content area
     st.header("Chat with your PDFs")
     
@@ -427,7 +447,7 @@ def main():
     if st.session_state.rag_chain:
         user_question = st.chat_input("Ask a question about your PDFs")
         if user_question:
-            handle_userinput(user_question, st.session_state.rag_chain, st.session_state.memory)
+            handle_user_input(user_question, st.session_state.rag_chain)
     else:
         # Display help message if no RAG chain is available
         if st.session_state.mode == "upload":

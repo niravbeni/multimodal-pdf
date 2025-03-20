@@ -1,121 +1,76 @@
 """
-HTML templates for the Streamlit app
-"""
-import base64
-import os
-
-def get_base64_encoded_image(image_path):
-    """Load and encode images to base64"""
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
-
-# Load and encode images at module level
-try:
-    bot_img = get_base64_encoded_image("images/ideo.png")
-    user_img = get_base64_encoded_image("images/user.png")
-except Exception as e:
-    bot_img = ""
-    user_img = ""
-    print(f"Error loading chat icons: {str(e)}")
-
-# Load CSS from file
-def load_css():
-    """Load CSS from file"""
-    try:
-        # Update path to the new location
-        with open("styles/styles.css", "r") as css_file:
-            return css_file.read()
-    except Exception as e:
-        print(f"Error loading CSS: {str(e)}")
-        # Fallback CSS if file can't be loaded
-        return """
-        .chat-message {
-            padding: 1.5rem; 
-            margin-bottom: 1rem; 
-            display: flex;
-            position: relative;
-        }
-        .chat-message.user {
-            background-color: white;
-        }
-        .chat-message.bot {
-            background-color: #f7f7f8;
-            position: relative;
-        }
-        .chat-message .avatar {
-          width: 20%;
-        }
-        .chat-message .avatar img {
-          max-width: 78px;
-          max-height: 78px;
-          border-radius: 50%;
-          object-fit: cover;
-        }
-        .chat-message .message {
-          width: 80%;
-          padding: 0 1.5rem;
-          color: #000;
-        }
-        """
-
-# Load CSS - but don't include it directly in templates
-css = load_css()
-
-# Bot message template
-def bot_template(answer):
-    return f'''
-    <div class="chat-message bot">
-        <div class="avatar">
-            <img src="https://i.ibb.co/cN0nmSj/Screenshot-2023-05-28-at-02-37-21.png">
-        </div>
-        <div class="message">
-            {answer}
-            {display_images(answer)}
-        </div>
-    </div>
-    '''
-
-def display_images(answer):
-    """Extract and display base64 images from the answer"""
-    if "data:image/jpeg;base64," in answer:
-        image_data = answer.split("data:image/jpeg;base64,")[1].split('"')[0]
-        return f'<img src="data:image/jpeg;base64,{image_data}" style="max-width: 100%;">'
-    return ""
-
-# User message template
-user_template = f"""
-<div class="chat-message user">
-    <div class="avatar">
-        <img src="data:image/png;base64,{user_img}" style="max-height: 78px; max-width: 78px; border-radius: 50%; object-fit: cover;">
-    </div>
-    <div class="message">{{{{MSG}}}}</div>
-</div>
+HTML and CSS styling for Text PDF Chat
 """
 
-# Add new debug template
-debug_template = """
-<div class="debug-info">
-    <h4>Debug Information</h4>
-    {{DEBUG_INFO}}
-</div>
-"""
-
-# Function to inject CSS properly
 def inject_css():
-    """Return CSS wrapped in style tags for proper injection"""
-    return f"""
+    """Return CSS for styling the chat interface"""
+    return """
     <style>
-    {css}
-    .debug-info {{
+    /* Main container styling */
+    .main-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    /* Chat message styling */
+    [data-testid="stChatMessage"] {
+        padding: 1rem 0;
+    }
+    
+    /* User message styling */
+    [data-testid="stChatMessage"][data-chat-message-user-name="user"] {
+        background-color: white;
+    }
+    
+    /* Assistant message styling */
+    [data-testid="stChatMessage"][data-chat-message-user-name="assistant"] {
+        background-color: #f7f7f8;
+    }
+    
+    /* Add padding to chat message container */
+    .stChatMessage {
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+        margin-bottom: 1rem;
+    }
+    
+    /* Style code blocks */
+    pre {
         background-color: #f0f2f6;
         border-radius: 0.5rem;
         padding: 1rem;
-        margin: 1rem 0;
         overflow-x: auto;
-    }}
-    .debug-info pre {{
-        white-space: pre-wrap;
-        word-wrap: break-word;
-    }}
+    }
+    
+    /* Style info messages */
+    .info-box {
+        background-color: #e8f0fe;
+        border-left: 5px solid #4285f4;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 0.25rem;
+    }
+    
+    /* Style error messages */
+    .error-box {
+        background-color: #fce8e8;
+        border-left: 5px solid #ea4335;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 0.25rem;
+    }
+    
+    /* Citation styling */
+    .citation {
+        background-color: #f0f2f6;
+        padding: 0.15rem 0.4rem;
+        border-radius: 0.25rem;
+        font-size: 0.9em;
+        color: #1976d2;
+        display: inline-block;
+        margin: 0 0.2rem;
+        border: 1px solid #cfd8dc;
+        font-weight: 500;
+    }
     </style>
     """
