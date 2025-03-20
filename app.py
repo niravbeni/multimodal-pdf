@@ -547,18 +547,18 @@ def main():
     
     # Sidebar
     with st.sidebar:
-        # Mode selection
+        # Mode selection - Simplified state handling
         mode = st.radio(
             "Choose mode:",
-            ["Upload PDFs", "Use Preloaded Collection"],
+            ["Upload PDFs", "Search PDF Collection"],
             key="mode_radio",
-            index=0 if st.session_state.mode == "upload" else 1,
             on_change=reset_conversation
         )
         
-        st.session_state.mode = "upload" if mode == "Upload PDFs" else "preloaded"
+        # Remove the redundant session state update
+        is_upload_mode = mode == "Upload PDFs"
         
-        if st.session_state.mode == "upload":
+        if is_upload_mode:
             # File uploader widget
             uploaded_files = st.file_uploader(
                 "Upload your PDFs",
@@ -579,13 +579,35 @@ def main():
                     model = get_openai_model("gpt-4o-mini")
                     st.session_state.rag_chain = get_rag_chain(retriever, model)
             
-        else:  # Preloaded collection mode
-            st.info("Using preloaded PDF collection")
+        else:  # Search PDF Collection mode
+            st.markdown("### Search PDF Collection")
+            st.info("Browse and search through our curated collection of PDFs.")
             
-            load_button = st.button("Load Collection", type="primary")
+            # Add dummy collection info
+            st.markdown("""
+            **Available Categories:**
+            - Business & Strategy
+            - Technology Trends
+            - Market Research
+            - Innovation Reports
+            
+            **Collection Stats:**
+            - Total PDFs: 150+
+            - Updated: Monthly
+            - Topics: 20+
+            """)
+            
+            search_query = st.text_input("Search collection by keyword", placeholder="e.g., AI trends, market analysis")
+            
+            load_button = st.button("Search Collection", type="primary")
             
             if load_button:
-                # Load the preloaded collection
+                if search_query:
+                    st.info("🔍 Searching collection... (Dummy functionality for now)")
+                else:
+                    st.warning("Please enter a search term")
+                
+                # Load the preloaded collection (keeping existing functionality for now)
                 retriever = load_preloaded_collection()
                 
                 if retriever:
@@ -611,13 +633,13 @@ def main():
             handle_user_input(user_question, st.session_state.rag_chain)
     else:
         # Display help message if no RAG chain is available
-        if st.session_state.mode == "upload":
+        if is_upload_mode:
             if "uploaded_files" not in locals() or not uploaded_files:
                 st.info("👆 Upload your PDFs using the sidebar and click 'Process PDFs' to start chatting")
             else:
                 st.info("👆 Click 'Process PDFs' in the sidebar to start chatting")
         else:
-            st.info("👆 Click 'Load Collection' in the sidebar to start chatting")
+            st.info("👆 Click 'Search Collection' in the sidebar to start searching")
 
 if __name__ == "__main__":
     main()
