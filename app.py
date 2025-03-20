@@ -11,6 +11,8 @@ import traceback
 import logging
 import uuid
 import joblib
+import pandas as pd
+from datetime import datetime
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -535,6 +537,38 @@ def display_conversation():
                 content = message.get("formatted_content", message["content"])
                 st.markdown(content, unsafe_allow_html=True)
 
+def get_pdf_metadata():
+    """Get metadata for PDFs in the pdf_database folder"""
+    pdf_dir = "pdf_database"
+    if not os.path.exists(pdf_dir):
+        return pd.DataFrame()
+    
+    pdf_data = []
+    for file in os.listdir(pdf_dir):
+        if file.lower().endswith('.pdf'):
+            file_path = os.path.join(pdf_dir, file)
+            file_stat = os.stat(file_path)
+            
+            # Extract organization name (text before first dash or underscore)
+            org_name = file.split('-')[0].split('_')[0].strip()
+            
+            # Get file size in MB
+            size_mb = file_stat.st_size / (1024 * 1024)
+            
+            # Get last modified date
+            mod_date = datetime.fromtimestamp(file_stat.st_mtime)
+            
+            pdf_data.append({
+                'Selected': False,
+                'Organization': org_name,
+                'Filename': file,
+                'Size (MB)': round(size_mb, 2),
+                'Last Modified': mod_date,
+                'Path': file_path
+            })
+    
+    return pd.DataFrame(pdf_data)
+
 def main():
     # Initialize session state
     initialize_session_state()
@@ -583,6 +617,62 @@ def main():
             st.markdown("### Search PDF Collection")
             st.info("Browse and search through our curated collection of PDFs.")
             
+            # Get PDF metadata
+            pdf_df = get_pdf_metadata()
+            
+            if not pdf_df.empty:
+                # Create a container for the dataframe with fixed height
+                with st.container():
+                    st.markdown("#### Available PDFs")
+                    st.markdown("Select one or more PDFs to chat with:")
+                    
+                    # Display the dataframe with selection column
+                    edited_df = st.data_editor(
+                        pdf_df,
+                        hide_index=True,
+                        column_config={
+                            "Selected": "checkbox",
+                            "Organization": {
+                                "label": "Organization",
+                                "help": "Organization that published the PDF",
+                            },
+                            "Filename": {
+                                "label": "Filename",
+                                "help": "Name of the PDF file",
+                            },
+                            "Size (MB)": {
+                                "label": "Size (MB)",
+                                "help": "File size in megabytes",
+                                "format": "%.2f MB",
+                            },
+                            "Last Modified": {
+                                "label": "Last Modified",
+                                "help": "Last modification date",
+                                "format": "D MMM YYYY, HH:mm",
+                            },
+                            "Path": {
+                                "label": "Path",
+                                "help": "File path",
+                                "hidden": True,
+                            },
+                        },
+                        disabled=["Organization", "Filename", "Size (MB)", "Last Modified"],
+                        key="pdf_selection",
+                        height=400,
+                    )
+                    
+                    # Process selected PDFs button
+                    selected_pdfs = edited_df[edited_df['Selected']]['Path'].tolist()
+                    if st.button("Process Selected PDFs", type="primary", disabled=len(selected_pdfs) == 0):
+                        # Process the selected PDFs
+                        retriever = process_pdf_text(selected_pdfs)
+                        
+                        if retriever:
+                            # Create the RAG chain
+                            model = get_openai_model("gpt-4o-mini")
+                            st.session_state.rag_chain = get_rag_chain(retriever, model)
+            else:
+                st.warning("No PDFs found in the pdf_database folder.")
         
         # Clear conversation button
         if st.button("Clear Conversation"):
