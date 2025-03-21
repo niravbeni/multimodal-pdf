@@ -61,16 +61,20 @@ def inject_css():
     }
     
     /* Citation styling */
-    .citation {
-        background-color: #f0f2f6;
-        padding: 0.15rem 0.4rem;
-        border-radius: 0.25rem;
-        font-size: 0.9em;
-        color: #1976d2;
+    .citation, code {
         display: inline-block;
-        margin: 0 0.2rem;
-        border: 1px solid #cfd8dc;
+        margin: 0 2px;
+        margin-top: 12px;
+        padding: 4px 8px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9em;
         font-weight: 500;
+        background-color: #f0f2f6;
+        color: #0066cc;
+        border: 1px solid #cfd8dc;
+        border-radius: 4px;
+        white-space: nowrap;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
     </style>
     """

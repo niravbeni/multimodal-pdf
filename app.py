@@ -13,6 +13,7 @@ import uuid
 import joblib
 import pandas as pd
 from datetime import datetime
+import re
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -31,7 +32,7 @@ from langchain.storage import InMemoryStore
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import local modules
-from database.pdf_manager import get_pdf_metadata_from_db
+from database.pdf_manager import get_pdf_metadata_from_db, search_pdfs_in_db
 from database.config import SessionLocal
 from utils.helpers import save_uploaded_file, load_preprocessed_data, ensure_chroma_directory
 from utils.html_templates import inject_css
@@ -120,16 +121,18 @@ def build_rag_prompt(context, question, chat_history=None):
     
     Provide a clear, detailed answer that directly addresses the question.
     
-    When citing sources, use the exact filename shown in the context above, including the .pdf extension.
-    For example, if the context shows [example.pdf, Page 5], cite it exactly as [example.pdf, Page 5].
+    CITATION FORMAT INSTRUCTIONS:
+    - For single pages: [filename.pdf, Page X]
+    - For multiple pages from same file: [filename.pdf, Page X, Page Y, Page Z]
+      * IMPORTANT: When citing multiple pages from the same file, use format [filename.pdf, Page X, Page Y] NOT [filename.pdf, Page X; Page Y]
+    - For different files: [file1.pdf, Page X; file2.pdf, Page Y]
     
-    If multiple sources support a statement, cite them all like: [document1.pdf, Page 5; document2.pdf, Page 3]
-    
-    Make sure you:
-    1. Use the exact filenames as shown in the context
-    2. Include the .pdf extension in citations
-    3. Use the exact page numbers shown in the context
-    4. Do not modify or abbreviate the filenames
+    IMPORTANT RULES: 
+    1. Use the exact filenames shown in the context, including the .pdf extension
+    2. Preserve the "Page X" format with capital P and space
+    3. For multiple pages from the same file, separate them with commas: "Page X, Page Y"
+    4. Do not abbreviate filenames
+    5. Always use the format [filename.pdf, Page X, Page Y] for multiple pages from the same file
     
     If you can't answer based on the provided context, simply state that you don't have enough information.
     """
@@ -184,13 +187,95 @@ def get_rag_chain(retriever, model):
     
     return generate_response
 
+def format_citations(text):
+    """Format citations in the text with proper styling"""
+    
+    # Create a function to wrap any citation in our styling
+    def style_citation(citation_text):
+        return f'''<br><code style="display: inline-block; 
+                  margin: 0 2px; 
+                  margin-top: 8px;
+                  padding: 4px 8px; 
+                  font-family: 'Courier New', Courier, monospace; 
+                  font-size: 0.9em; 
+                  font-weight: 500;
+                  background-color: #f0f2f6; 
+                  color: #0066cc; 
+                  border: 1px solid #cfd8dc; 
+                  border-radius: 4px;
+                  white-space: nowrap;
+                  box-shadow: 0 1px 2px rgba(0,0,0,0.05);">{citation_text}</code>'''
+    
+    # Special pattern for BLACKROCK citation format with semicolons
+    # [BLACKROCK - 2025-thematic-outlook_CAIG.pdf, Page 2; BLACKROCK - 2025-thematic-outlook_CAIG.pdf, Page 3]
+    text = re.sub(
+        r'\[([^,;\]]+),\s*Page\s+(\d+);\s*(?:\1|(?:BLACKROCK[^,;\]]+)),\s*Page\s+(\d+)\]',
+        lambda m: style_citation(f'[{m.group(1)}, Page {m.group(2)}, Page {m.group(3)}]'),
+        text
+    )
+    
+    # First pass: Convert all patterns with same file but pages separated by semicolons
+    # [filename.pdf, Page X; Page Y] -> [filename.pdf, Page X, Page Y]
+    text = re.sub(
+        r'\[([^,;\]]+),\s*Page\s+(\d+);\s*Page\s+(\d+)\]',
+        lambda m: f'[{m.group(1)}, Page {m.group(2)}, Page {m.group(3)}]',
+        text
+    )
+    
+    # Also handle cases where the second citation repeats the filename
+    # [filename.pdf, Page X; filename.pdf, Page Y] -> [filename.pdf, Page X, Page Y]
+    text = re.sub(
+        r'\[([^,;\]]+),\s*Page\s+(\d+);\s*\1,\s*Page\s+(\d+)\]',
+        lambda m: f'[{m.group(1)}, Page {m.group(2)}, Page {m.group(3)}]',
+        text
+    )
+    
+    # Second pass: Apply style to various citation patterns
+    
+    # Style citations with multiple pages from same file [filename.pdf, Page X, Page Y]
+    text = re.sub(
+        r'\[([^,\]]+),\s*Page\s+(\d+),\s*Page\s+(\d+)\]',
+        lambda m: style_citation(f'[{m.group(1)}, Page {m.group(2)}, Page {m.group(3)}]'),
+        text
+    )
+    
+    # Handle bare number citations [filename.pdf, 2]
+    text = re.sub(
+        r'\[([^,\]]+),\s*(\d+)\]',
+        lambda m: style_citation(f'[{m.group(1)}, Page {m.group(2)}]'),
+        text
+    )
+    
+    # Handle existing "Page X" citations [filename.pdf, Page 2]
+    text = re.sub(
+        r'\[([^,\]]+),\s*Page\s+(\d+)\]',
+        lambda m: style_citation(f'[{m.group(1)}, Page {m.group(2)}]'),
+        text
+    )
+    
+    # Handle page ranges [filename.pdf, Pages X-Y]
+    text = re.sub(
+        r'\[([^,\]]+),\s*Pages\s+(\d+)-(\d+)\]',
+        lambda m: style_citation(f'[{m.group(1)}, Pages {m.group(2)}-{m.group(3)}]'),
+        text
+    )
+    
+    # Handle multiple different files [file1.pdf, Page X; file2.pdf, Page Y]
+    text = re.sub(
+        r'\[([^,;\]]+),\s*Page\s+(\d+);\s*([^,;\]]+),\s*Page\s+(\d+)\]',
+        lambda m: style_citation(f'[{m.group(1)}, Page {m.group(2)}; {m.group(3)}, Page {m.group(4)}]'),
+        text
+    )
+    
+    return text
+
 def handle_user_input(user_question, rag_chain):
     """Process the user question and update the chat"""
     if not user_question:
         return
     
     # Add user message to conversation
-    st.session_state.conversation.append({"role": "user", "content": user_question, "formatted_content": user_question})
+    st.session_state.conversation.append({"role": "user", "content": user_question})
     
     # Display user message immediately
     with st.chat_message("user", avatar=USER_AVATAR):
@@ -204,122 +289,26 @@ def handle_user_input(user_question, rag_chain):
         try:
             # Generate response
             response = rag_chain(user_question)
-            
-            # Get response content
             response_content = response.content
             
-            # Format citations for better readability
-            import re
+            # Format citations
+            formatted_response = format_citations(response_content)
             
-            # Log the raw response to see what citations are present
-            logger.info(f"Raw response with citations: {response_content}")
-            
-            # Get the last retrieved documents to ensure correct filenames
-            last_docs = st.session_state.get('last_retrieved_docs', [])
-            # Create a mapping of both full paths and basenames to the correct filename
-            filename_map = {}
-            for doc in last_docs:
-                source = doc.metadata.get('source', '')
-                if source:
-                    filename = os.path.basename(source)
-                    filename_map[source] = filename  # Map full path to filename
-                    filename_map[filename] = filename  # Map filename to itself
-                    # Also map without .pdf extension
-                    name_without_ext = os.path.splitext(filename)[0]
-                    filename_map[name_without_ext] = filename
-            
-            logger.info(f"Filename map: {filename_map}")
-            
-            # Apply formatting to each citation pattern in order of specificity:
-            
-            # 1. Single page citation: [filename.pdf, Page X]
-            single_page_pattern = r'\[([^,;\]]+?)(?:\.pdf)?,\s*Page\s*(\d+)\]'
-            def single_page_replacer(match):
-                pdf_path = match.group(1)
-                page_num = match.group(2)
-                pdf_filename = filename_map.get(pdf_path, pdf_path)
-                if not pdf_filename.lower().endswith('.pdf'):
-                    pdf_filename += '.pdf'
-                return f'<span class="citation">[{pdf_filename}, Page {page_num}]</span>'
-            
-            formatted_response = re.sub(single_page_pattern, single_page_replacer, response_content)
-            
-            # 2. Multiple pages with 'and': [filename.pdf, Pages X and Y]
-            pages_and_pattern = r'\[([^,;\]]+?)(?:\.pdf)?,\s*Pages\s*(\d+)\s*and\s*(\d+)\]'
-            def pages_and_replacer(match):
-                pdf_path = match.group(1)
-                page1 = match.group(2)
-                page2 = match.group(3)
-                pdf_filename = filename_map.get(pdf_path, pdf_path)
-                if not pdf_filename.lower().endswith('.pdf'):
-                    pdf_filename += '.pdf'
-                return f'<span class="citation">[{pdf_filename}, Pages {page1} and {page2}]</span>'
-            
-            formatted_response = re.sub(pages_and_pattern, pages_and_replacer, formatted_response)
-            
-            # 3. Multiple pages with semicolon: [filename.pdf, Page X; Page Y]
-            pages_semi_pattern = r'\[([^,;\]]+?)(?:\.pdf)?,\s*Page\s*(\d+);\s*Page\s*(\d+)\]'
-            def pages_semi_replacer(match):
-                pdf_path = match.group(1)
-                page1 = match.group(2)
-                page2 = match.group(3)
-                pdf_filename = filename_map.get(pdf_path, pdf_path)
-                if not pdf_filename.lower().endswith('.pdf'):
-                    pdf_filename += '.pdf'
-                return f'<span class="citation">[{pdf_filename}, Page {page1}; Page {page2}]</span>'
-            
-            formatted_response = re.sub(pages_semi_pattern, pages_semi_replacer, formatted_response)
-            
-            # 4. Multiple pages with comma: [filename.pdf, Pages X, Y, Z]
-            pages_comma_pattern = r'\[([^,;\]]+?)(?:\.pdf)?,\s*Pages\s*(\d+(?:\s*,\s*\d+)+)\]'
-            def pages_comma_replacer(match):
-                pdf_path = match.group(1)
-                pages = match.group(2).replace(' ', '')
-                pdf_filename = filename_map.get(pdf_path, pdf_path)
-                if not pdf_filename.lower().endswith('.pdf'):
-                    pdf_filename += '.pdf'
-                return f'<span class="citation">[{pdf_filename}, Pages {pages}]</span>'
-            
-            formatted_response = re.sub(pages_comma_pattern, pages_comma_replacer, formatted_response)
-            
-            # 5. Multiple pages with range: [filename.pdf, Pages X-Y]
-            pages_range_pattern = r'\[([^,;\]]+?)(?:\.pdf)?,\s*Pages\s*(\d+)-(\d+)\]'
-            def pages_range_replacer(match):
-                pdf_path = match.group(1)
-                start_page = match.group(2)
-                end_page = match.group(3)
-                pdf_filename = filename_map.get(pdf_path, pdf_path)
-                if not pdf_filename.lower().endswith('.pdf'):
-                    pdf_filename += '.pdf'
-                return f'<span class="citation">[{pdf_filename}, Pages {start_page}-{end_page}]</span>'
-            
-            formatted_response = re.sub(pages_range_pattern, pages_range_replacer, formatted_response)
-            
-            # 6. Multiple files with single pages: [file1.pdf, Page X; file2.pdf, Page Y]
-            multi_file_pattern = r'\[([^,;\]]+?)(?:\.pdf)?,\s*Page\s*(\d+);\s*([^,;\]]+?)(?:\.pdf)?,\s*Page\s*(\d+)\]'
-            def multi_file_replacer(match):
-                pdf1_path = match.group(1)
-                page1 = match.group(2)
-                pdf2_path = match.group(3)
-                page2 = match.group(4)
-                pdf1_filename = filename_map.get(pdf1_path, pdf1_path)
-                pdf2_filename = filename_map.get(pdf2_path, pdf2_path)
-                if not pdf1_filename.lower().endswith('.pdf'):
-                    pdf1_filename += '.pdf'
-                if not pdf2_filename.lower().endswith('.pdf'):
-                    pdf2_filename += '.pdf'
-                return f'<span class="citation">[{pdf1_filename}, Page {page1}; {pdf2_filename}, Page {page2}]</span>'
-            
-            formatted_response = re.sub(multi_file_pattern, multi_file_replacer, formatted_response)
-            
-            # Add the formatted response to the conversation (with HTML for persistence)
+            # Add the formatted response to the conversation
             st.session_state.conversation.append({
-                "role": "assistant", 
-                "content": response_content,  # Plain content
-                "formatted_content": formatted_response  # HTML-formatted content with styled citations
+                "role": "assistant",
+                "content": response_content,
+                "formatted_content": formatted_response
             })
             
-            # Display the formatted response with HTML
+            # Also update all previous formatted content to ensure consistent styling
+            for i, message in enumerate(st.session_state.conversation):
+                if message["role"] == "assistant" and "content" in message:
+                    # Reformat all assistant messages to ensure consistent citation styling
+                    reformatted = format_citations(message["content"])
+                    st.session_state.conversation[i]["formatted_content"] = reformatted
+            
+            # Display the formatted response with HTML enabled
             message_placeholder.markdown(formatted_response, unsafe_allow_html=True)
             
         except Exception as e:
@@ -473,6 +462,15 @@ def initialize_session_state():
     if "temp_pdf_files" not in st.session_state:
         st.session_state.temp_pdf_files = []
 
+    if "selected_pdfs" not in st.session_state:
+        st.session_state.selected_pdfs = []
+
+    if "last_retrieved_docs" not in st.session_state:
+        st.session_state.last_retrieved_docs = []
+
+    if "search_query" not in st.session_state:
+        st.session_state.search_query = ""
+
 def reset_conversation():
     """Reset the conversation"""
     st.session_state.conversation = []
@@ -545,14 +543,36 @@ def display_conversation():
     if not messages:  # If no messages, return early
         return
 
-    # Create a container for the messages
+    # Create a container for the messages with a unique class
     with st.container():
+        # Apply custom CSS for this container
+        st.markdown("""
+        <style>
+        .stChatMessage code {
+            display: inline-block !important;
+            margin: 0 2px !important;
+            margin-top: 12px !important;
+            padding: 4px 8px !important;
+            font-family: 'Courier New', monospace !important;
+            font-size: 0.9em !important;
+            font-weight: 500 !important;
+            background-color: #f0f2f6 !important;
+            color: #0066cc !important;
+            border: 1px solid #cfd8dc !important;
+            border-radius: 4px !important;
+            white-space: nowrap !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
         # Show full history
         for message in messages:
             avatar = USER_AVATAR if message["role"] == "user" else ASSISTANT_AVATAR
             with st.chat_message(message["role"], avatar=avatar):
                 # Use formatted content if available, otherwise use plain content
                 content = message.get("formatted_content", message["content"])
+                # Always enable HTML for displaying messages
                 st.markdown(content, unsafe_allow_html=True)
 
 def get_pdf_metadata():
@@ -560,29 +580,77 @@ def get_pdf_metadata():
     return get_pdf_metadata_from_db()
 
 def main():
-    # Initialize session state
+    # Initialize session state variables
     initialize_session_state()
-    
-    # Page configuration
-    st.set_page_config(page_title="Text PDF Chat", page_icon="📄", layout="wide")
-    
+
     # Inject custom CSS
     st.markdown(inject_css(), unsafe_allow_html=True)
-    
-    # Sidebar
+
+    # Create sidebar
     with st.sidebar:
-        # Mode selection - Simplified state handling
-        mode = st.radio(
-            "Choose mode:",
-            ["Upload PDFs", "Search PDF Collection"],
-            key="mode_radio",
-            on_change=reset_conversation
-        )
-        
-        # Remove the redundant session state update
-        is_upload_mode = mode == "Upload PDFs"
-        
-        if is_upload_mode:
+        st.title("PDF Chat")
+        mode = st.radio("Mode", ["Upload PDFs", "Search PDF Collection"])
+
+        if mode == "Search PDF Collection":
+            # Add search bar in the sidebar
+            search_query = st.text_input("🔍 Search PDFs", 
+                                       value=st.session_state.search_query,
+                                       placeholder="Search by content or filename...")
+            
+            # Get PDF metadata based on search query
+            if search_query:
+                st.session_state.search_query = search_query
+                pdf_df = search_pdfs_in_db(search_query)
+                if len(pdf_df) == 0:
+                    st.info("No PDFs found matching your search.")
+            else:
+                pdf_df = get_pdf_metadata()
+
+            # Display PDF selection interface
+            if not pdf_df.empty:
+                st.write(f"Found {len(pdf_df)} PDFs")
+                
+                # Display the dataframe with selection column
+                edited_df = st.data_editor(
+                    pdf_df,
+                    hide_index=True,
+                    column_config={
+                        "Selected": "checkbox",
+                        "Organization": {
+                            "label": "Organization",
+                            "help": "Organization that published the PDF",
+                        },
+                        "Filename": {
+                            "label": "Filename",
+                            "help": "Name of the PDF file",
+                        },
+                        "Size (MB)": {
+                            "label": "Size (MB)",
+                            "help": "File size in megabytes",
+                            "format": "%.2f MB",
+                        },
+                        "Last Modified": {
+                            "label": "Last Modified",
+                            "help": "Last modification date",
+                            "format": "D MMM YYYY",
+                        },
+                        "Path": {
+                            "label": "Path",
+                            "help": "File path",
+                            "hidden": True,
+                        },
+                        "ID": {
+                            "label": "ID",
+                            "help": "Database ID",
+                            "hidden": True,
+                        }
+                    },
+                    disabled=["Organization", "Filename", "Size (MB)", "Last Modified"],
+                    key="pdf_selection",
+                    height=400,
+                )
+
+        else:  # Upload PDFs mode
             # File uploader widget
             uploaded_files = st.file_uploader(
                 "Upload your PDFs",
@@ -603,123 +671,6 @@ def main():
                     model = get_openai_model("gpt-4o-mini")
                     st.session_state.rag_chain = get_rag_chain(retriever, model)
             
-        else:  # Search PDF Collection mode
-            st.markdown("### Search PDF Collection")
-            st.info("Browse and search through our curated collection of PDFs.")
-            
-            # Get PDF metadata from database
-            pdf_df = get_pdf_metadata()
-            
-            if not pdf_df.empty:
-                # Create a container for the dataframe with fixed height
-                with st.container():
-                    st.markdown("#### Available PDFs")
-                    st.markdown("Select one or more PDFs to chat with:")
-                    
-                    # Display the dataframe with selection column
-                    edited_df = st.data_editor(
-                        pdf_df,
-                        hide_index=True,
-                        column_config={
-                            "Selected": "checkbox",
-                            "Organization": {
-                                "label": "Organization",
-                                "help": "Organization that published the PDF",
-                            },
-                            "Filename": {
-                                "label": "Filename",
-                                "help": "Name of the PDF file",
-                            },
-                            "Size (MB)": {
-                                "label": "Size (MB)",
-                                "help": "File size in megabytes",
-                                "format": "%.2f MB",
-                            },
-                            "Last Modified": {
-                                "label": "Last Modified",
-                                "help": "Last modification date",
-                                "format": "D MMM YYYY",
-                            },
-                            "Path": {
-                                "label": "Path",
-                                "help": "File path",
-                                "hidden": True,
-                            },
-                            "ID": {
-                                "label": "ID",
-                                "help": "Database ID",
-                                "hidden": True,
-                            }
-                        },
-                        disabled=["Organization", "Filename", "Size (MB)", "Last Modified"],
-                        key="pdf_selection",
-                        height=400,
-                    )
-                    
-                    # Process selected PDFs button
-                    selected_pdfs = edited_df[edited_df['Selected']]['Path'].tolist()
-                    if st.button("Process Selected PDFs", type="primary", disabled=len(selected_pdfs) == 0):
-                        # Process the selected PDFs
-                        with st.status("Processing PDFs...") as status:
-                            try:
-                                # Get database session
-                                db = SessionLocal()
-                                
-                                # Get selected PDF IDs
-                                selected_ids = edited_df[edited_df['Selected']]['ID'].tolist()
-                                
-                                # Extract text from PDFs
-                                status.update(label="Extracting text from PDFs...")
-                                documents = process_pdf_text(selected_pdfs)
-                                
-                                if documents:
-                                    # Generate summaries for better retrieval
-                                    status.update(label=f"Generating summaries for {len(documents)} text chunks...")
-                                    model = get_openai_model("gpt-4o-mini")
-                                    summaries = summarize_text_chunks(documents, model)
-                                    
-                                    # Create retriever
-                                    status.update(label="Creating retriever...")
-                                    embeddings = get_embeddings()
-                                    retriever = create_text_retriever(documents, summaries, embeddings)
-                                    
-                                    if retriever:
-                                        # Create the RAG chain
-                                        st.session_state.rag_chain = get_rag_chain(retriever, model)
-                                        status.update(label="✅ PDFs processed successfully!", state="complete")
-                                        
-                                        # Clear the search question since we're moving to chat mode
-                                        st.session_state.search_question = None
-                                        
-                                        # Show success message
-                                        st.success(f"Successfully processed {len(selected_pdfs)} PDFs. You can now start asking questions!")
-                                    else:
-                                        status.update(label="❌ Failed to create retriever!", state="error")
-                                else:
-                                    status.update(label="❌ No text content extracted from PDFs!", state="error")
-                                    # Add more detailed information about the PDFs
-                                    pdf_info = "\n".join([f"- {os.path.basename(path)} (Size: {os.path.getsize(path) / 1024:.1f} KB)" for path in selected_pdfs])
-                                    error_msg = f"""
-                                    Could not extract any text from the selected PDFs. Please try different files.
-                                    
-                                    PDF Files attempted:
-                                    {pdf_info}
-                                    
-                                    This could be due to:
-                                    1. The PDFs containing only scanned images without OCR
-                                    2. The PDFs having security restrictions
-                                    3. Text encoded in a non-standard way
-                                    """
-                                    st.error(error_msg)
-                            except Exception as e:
-                                error_msg = f"Error processing PDFs: {str(e)}\n{traceback.format_exc()}"
-                                status.update(label=f"❌ {error_msg}", state="error")
-                                st.error(error_msg)
-                            finally:
-                                db.close()
-            else:
-                st.warning("No PDFs found in the database. Please upload some PDFs first.")
-        
         # Clear conversation button
         if st.button("Clear Conversation"):
             reset_conversation()
@@ -732,7 +683,7 @@ def main():
     display_conversation()
     
     # Chat input
-    if is_upload_mode:
+    if mode == "Upload PDFs":
         if st.session_state.rag_chain:
             user_question = st.chat_input("Ask a question about your PDFs", key="upload_mode_chat")
             if user_question:
