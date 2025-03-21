@@ -31,6 +31,8 @@ from langchain.storage import InMemoryStore
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import local modules
+from database.pdf_manager import get_pdf_metadata_from_db
+from database.config import SessionLocal
 from utils.helpers import save_uploaded_file, load_preprocessed_data, ensure_chroma_directory
 from utils.html_templates import inject_css
 from utils.text_processor import process_pdf_text, summarize_text_chunks
@@ -554,36 +556,8 @@ def display_conversation():
                 st.markdown(content, unsafe_allow_html=True)
 
 def get_pdf_metadata():
-    """Get metadata for PDFs in the pdf_database folder"""
-    pdf_dir = "pdf_database"
-    if not os.path.exists(pdf_dir):
-        return pd.DataFrame()
-    
-    pdf_data = []
-    for file in os.listdir(pdf_dir):
-        if file.lower().endswith('.pdf'):
-            file_path = os.path.join(pdf_dir, file)
-            file_stat = os.stat(file_path)
-            
-            # Extract organization name (text before first dash or underscore)
-            org_name = file.split('-')[0].split('_')[0].strip()
-            
-            # Get file size in MB
-            size_mb = file_stat.st_size / (1024 * 1024)
-            
-            # Get last modified date
-            mod_date = datetime.fromtimestamp(file_stat.st_mtime)
-            
-            pdf_data.append({
-                'Selected': False,
-                'Organization': org_name,
-                'Filename': file,
-                'Size (MB)': round(size_mb, 2),
-                'Last Modified': mod_date,
-                'Path': file_path
-            })
-    
-    return pd.DataFrame(pdf_data)
+    """Get metadata for PDFs from the database"""
+    return get_pdf_metadata_from_db()
 
 def main():
     # Initialize session state
@@ -633,7 +607,7 @@ def main():
             st.markdown("### Search PDF Collection")
             st.info("Browse and search through our curated collection of PDFs.")
             
-            # Get PDF metadata
+            # Get PDF metadata from database
             pdf_df = get_pdf_metadata()
             
             if not pdf_df.empty:
@@ -664,13 +638,18 @@ def main():
                             "Last Modified": {
                                 "label": "Last Modified",
                                 "help": "Last modification date",
-                                "format": "D MMM YYYY, HH:mm",
+                                "format": "D MMM YYYY",
                             },
                             "Path": {
                                 "label": "Path",
                                 "help": "File path",
                                 "hidden": True,
                             },
+                            "ID": {
+                                "label": "ID",
+                                "help": "Database ID",
+                                "hidden": True,
+                            }
                         },
                         disabled=["Organization", "Filename", "Size (MB)", "Last Modified"],
                         key="pdf_selection",
@@ -683,6 +662,12 @@ def main():
                         # Process the selected PDFs
                         with st.status("Processing PDFs...") as status:
                             try:
+                                # Get database session
+                                db = SessionLocal()
+                                
+                                # Get selected PDF IDs
+                                selected_ids = edited_df[edited_df['Selected']]['ID'].tolist()
+                                
                                 # Extract text from PDFs
                                 status.update(label="Extracting text from PDFs...")
                                 documents = process_pdf_text(selected_pdfs)
@@ -730,8 +715,10 @@ def main():
                                 error_msg = f"Error processing PDFs: {str(e)}\n{traceback.format_exc()}"
                                 status.update(label=f"❌ {error_msg}", state="error")
                                 st.error(error_msg)
+                            finally:
+                                db.close()
             else:
-                st.warning("No PDFs found in the pdf_database folder.")
+                st.warning("No PDFs found in the database. Please upload some PDFs first.")
         
         # Clear conversation button
         if st.button("Clear Conversation"):
