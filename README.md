@@ -1,19 +1,19 @@
-# Text PDF Chat
+# PDF Chat System
 
-A streamlined, text-based PDF chat application that enables users to upload PDF documents and ask questions about their content.
+A streamlined PDF management and chat system that enables users to upload PDF documents, search them by content, and ask questions about their content.
 
 ## Overview
 
-This application extracts text from PDF files, processes it into chunks, and uses a retrieval-augmented generation (RAG) approach to answer questions about the content. It focuses solely on text extraction and processing, making it more efficient and producing smaller output files compared to multimodal approaches.
+This application extracts text from PDF files, processes it into chunks, and uses a retrieval-augmented generation (RAG) approach to answer questions about the content. It stores PDF metadata and content in a database for efficient searching and retrieval.
 
 ## Features
 
-- **PDF Text Extraction**: Extracts text from PDF files using the Unstructured library
-- **Text Chunking**: Splits large documents into manageable chunks for better processing
-- **Semantic Search**: Uses embeddings to find the most relevant content for user queries
-- **Conversational Interface**: Clean, intuitive chat interface for asking questions
-- **Preloaded Collection Support**: Option to use a preprocessed collection of documents
-- **Summary Generation**: Creates summaries of text chunks to improve retrieval quality
+- **PDF Management**: Import PDFs from a folder to the database with a single command
+- **Automatic Text Extraction**: Extract text content from PDFs for search and analysis
+- **Automatic Summary Generation**: Create summaries of PDFs to improve searchability
+- **Content Search**: Search PDF content and metadata to find relevant documents
+- **Conversational Interface**: Clean chat interface for asking questions about PDF content
+- **Semantic Search**: Use embeddings to find the most relevant content for user queries
 
 ## Getting Started
 
@@ -21,13 +21,14 @@ This application extracts text from PDF files, processes it into chunks, and use
 
 - Python 3.8+
 - OpenAI API key
+- PostgreSQL database (optional, SQLite will be used by default)
 
 ### Installation
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/text-pdf-chat.git
-   cd text-pdf-chat
+   git clone https://github.com/yourusername/pdf-chat.git
+   cd pdf-chat
    ```
 
 2. Install dependencies:
@@ -45,63 +46,76 @@ This application extracts text from PDF files, processes it into chunks, and use
      OPENAI_API_KEY="your_openai_api_key_here"
      ```
 
-### Usage
+### Database Setup
 
-#### Running the Application
+```bash
+python -m database.create_db
+```
+
+## Usage
+
+### 1. Process PDFs (Import to Database)
+
+Using the all-in-one PDF processor, you can import PDFs from a folder, extract their text, generate summaries, and store everything in the database:
+
+```bash
+python pdf_processor.py --input /path/to/pdf/folder
+```
+
+Options:
+- `--input`, `-i`: Directory containing PDFs (required)
+- `--keep`, `-k`: Keep original PDF files (store path in database) (default: True)
+- `--move`, `-m`: Move processed files to a different directory
+- `--processed-dir`, `-p`: Directory to move processed files to (required if using --move)
+
+### 2. Launch the Chat Application
 
 ```bash
 streamlit run app.py
 ```
 
-#### Using the Application
+### 3. Using the Application
 
-1. **Upload Mode**:
+1. **Search Mode**:
+   - Select "Search PDF Collection" in the sidebar
+   - Search for PDFs by content, filename, or summary
+   - Select PDFs from the search results
+   - Click "Process Selected PDFs"
+   - Start asking questions about your documents
+
+2. **Upload Mode**:
    - Select "Upload PDFs" in the sidebar
    - Upload one or more PDF files
    - Click "Process PDFs"
    - Start asking questions about your documents
 
-2. **Preloaded Collection Mode**:
-   - First, preprocess your PDFs (see below)
-   - Select "Use Preloaded Collection" in the sidebar
-   - Click "Load Collection"
-   - Start asking questions about the preloaded documents
-
-#### Preprocessing PDFs
-
-To create a preprocessed collection:
-
-```bash
-python preprocess.py --input /path/to/your/pdfs --output ./preprocessed_data/primary_collection.joblib
-```
-
-Options:
-- `--input`, `-i`: Directory containing PDFs or path to a specific PDF file (required)
-- `--output`, `-o`: Output path for the processed data (default: ./preprocessed_data/primary_collection.joblib)
-- `--model`, `-m`: OpenAI model to use for summarization (default: gpt-4o-mini)
-
 ## Project Structure
 
 ```
-text-pdf-chat/
+pdf-chat/
 ├── app.py                     # Main Streamlit application
-├── preprocess.py              # Script to preprocess PDFs
+├── pdf_processor.py           # All-in-one PDF processing script
 ├── requirements.txt           # Python dependencies
-├── utils/
-│   ├── helpers.py             # Helper functions for the application
+├── database/                  # Database models and utilities
+│   ├── config.py              # Database configuration
+│   ├── create_db.py           # Database creation script
+│   ├── models.py              # SQLAlchemy database models
+│   └── pdf_manager.py         # PDF database operations
+├── utils/                     # Utility functions
+│   ├── helpers.py             # Helper functions
 │   ├── html_templates.py      # HTML/CSS templates for the UI
 │   ├── sqlite_fix.py          # Fix for SQLite issues
 │   └── text_processor.py      # Text extraction and processing functions
-├── preprocessed_data/         # Directory for preprocessed collections
-└── temp_pdf_files/            # Temporary directory for uploaded PDFs
+└── pdf_database/              # Default directory for PDF storage
 ```
 
 ## Technical Details
 
-- **Text Extraction**: Uses Unstructured library to extract text from PDFs
+- **Database**: SQLAlchemy ORM with SQLite or PostgreSQL
+- **Text Extraction**: PyPDF2 for extracting text from PDFs
 - **Vector Database**: ChromaDB for storing and retrieving document embeddings
 - **Embeddings**: OpenAI embeddings for semantic search capabilities
-- **Language Model**: OpenAI's GPT models for generating responses
+- **Language Model**: OpenAI's GPT models for generating responses and summaries
 - **Retrieval Strategy**: Multi-vector retrieval with summaries for better results
 
 ## License

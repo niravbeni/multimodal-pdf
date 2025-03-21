@@ -70,6 +70,21 @@ def extract_pdf_metadata(file_path: str) -> dict:
             'page_count': 0
         }
 
+def extract_full_text(file_path: str) -> str:
+    """Extract full text content from a PDF file."""
+    full_text = ""
+    try:
+        with open(file_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    full_text += text + "\n\n"
+        return full_text
+    except Exception as e:
+        print(f"Warning: Error extracting full text: {str(e)}")
+        return ""
+
 def migrate_pdf_to_db(
     db: Session,
     file_path: str,
@@ -89,6 +104,9 @@ def migrate_pdf_to_db(
         # Extract metadata
         metadata = extract_pdf_metadata(file_path)
         
+        # Extract full text
+        full_text = extract_full_text(file_path)
+        
         # Create new PDF record
         new_pdf = PDF(
             filename=os.path.basename(file_path),
@@ -100,16 +118,17 @@ def migrate_pdf_to_db(
             author=metadata['author'],
             creation_date=metadata['creation_date'],
             last_modified=metadata['last_modified'],
-            uploaded_at=datetime.now(timezone.utc)
+            uploaded_at=datetime.now(timezone.utc),
+            full_text=full_text
         )
         
         # Process PDF text and create chunks
-        chunks = process_pdf_text(file_path)
-        for idx, (content, page_num) in enumerate(chunks):
+        documents = process_pdf_text([file_path])
+        for idx, doc in enumerate(documents):
             chunk = PDFChunk(
                 chunk_index=idx,
-                content=content,
-                page_number=page_num
+                content=doc.page_content,
+                page_number=doc.metadata.get('page', 0)
             )
             new_pdf.chunks.append(chunk)
         
