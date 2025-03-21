@@ -46,6 +46,7 @@ class PDFChunk(Base):
     pdf_id = Column(Integer, ForeignKey('pdfs.id'), nullable=False)
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
+    summary = Column(Text, nullable=True)  # Summary of the chunk content
     embedding = Column(LargeBinary, nullable=True)  # Vector embedding for semantic search
     page_number = Column(Integer, nullable=False)
     

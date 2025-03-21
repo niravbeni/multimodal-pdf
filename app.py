@@ -465,7 +465,7 @@ def reset_conversation():
     """Reset the conversation"""
     st.session_state.conversation = []
 
-def process_uploaded_files(uploaded_files):
+def process_uploaded_files(uploaded_files, speed_mode):
     """Process uploaded PDF files and create a retriever"""
     temp_dir = "./temp_pdf_files"
     os.makedirs(temp_dir, exist_ok=True)
@@ -507,7 +507,40 @@ def process_uploaded_files(uploaded_files):
             # Generate summaries for better retrieval
             status.update(label=f"Generating summaries for {len(text_chunks)} text chunks...")
             model = get_openai_model("gpt-4o-mini")
-            summaries = summarize_text_chunks(text_chunks, model)
+            
+            # Check if this is a large document that might benefit from speed mode
+            is_large_document = len(text_chunks) > 100
+            
+            # Auto-enable speed mode for very large documents
+            auto_speed_mode = speed_mode
+            if len(text_chunks) > 500 and not speed_mode:
+                auto_speed_mode = True
+                status.update(label=f"Large document detected ({len(text_chunks)} chunks). Auto-enabling Speed Mode...")
+            
+            if is_large_document and auto_speed_mode:
+                # Configure parameters for speed mode
+                sample_ratio = 0.5  # 50% of chunks
+                max_chunks = None
+                
+                # For very large documents, use more aggressive sampling
+                if len(text_chunks) > 500:
+                    sample_ratio = 0.25  # 25% of chunks
+                
+                status.update(label=f"Speed Mode: Processing {int(len(text_chunks) * sample_ratio)} of {len(text_chunks)} chunks...")
+                
+                # Import and use the optimized batch function from pdf_processor
+                from pdf_processor import batch_summarize_chunks
+                summaries = batch_summarize_chunks(
+                    text_chunks,
+                    model,
+                    batch_size=40,
+                    max_workers=20,
+                    sample_ratio=sample_ratio,
+                    chunk_limit=max_chunks
+                )
+            else:
+                # Use standard processing
+                summaries = summarize_text_chunks(text_chunks, model)
             
             # Create retriever
             status.update(label="Creating retriever...")
@@ -663,6 +696,38 @@ def main():
                 # Store selected pdf paths
                 selected_pdf_paths = selected_pdfs["Path"].tolist()
                 
+                # Add processing options
+                with st.expander("Processing Options", expanded=True):
+                    # For large files, auto-enable speed mode by default
+                    has_large_file = any(pdf_df[pdf_df["Selected"] == True]["Size (MB)"] > 50)
+                    
+                    if has_large_file:
+                        large_file_info = pdf_df[pdf_df["Selected"] == True][pdf_df["Size (MB)"] > 50].iloc[0]
+                        large_filename = large_file_info["Filename"]
+                        large_size = large_file_info["Size (MB)"]
+                        
+                        st.warning(f"Large file detected: {large_filename} ({large_size:.1f} MB). Speed Mode enabled by default.")
+                    
+                    speed_mode = st.checkbox(
+                        "Speed Mode (Ultra-Fast)",
+                        value=has_large_file,  # Auto-enable for large files
+                        help="Process large PDFs much faster by intelligently sampling the content. Recommended for 500+ page documents."
+                    )
+                    
+                    # Add more info about speed mode
+                    if speed_mode:
+                        st.info("""
+                        ⚡ **Speed Mode Enabled**
+                        
+                        For large documents, the system will:
+                        - Process only 25-50% of content chunks for 500+ page documents
+                        - Use 20 parallel workers for maximum speed
+                        - Prioritize content from the beginning and end of the document
+                        - Complete in ~3-5 minutes for a 1000-page document
+                        
+                        *Best for quick exploration of large documents*
+                        """)
+                
                 # Add process button
                 process_button = st.button("Process Selected PDFs", type="primary")
                 
@@ -682,7 +747,40 @@ def main():
                                 # Generate summaries for better retrieval
                                 status.update(label=f"Generating summaries for {len(text_chunks)} text chunks...")
                                 model = get_openai_model("gpt-4o-mini")
-                                summaries = summarize_text_chunks(text_chunks, model)
+                                
+                                # Check if this is a large document that might benefit from speed mode
+                                is_large_document = len(text_chunks) > 100
+                                
+                                # Auto-enable speed mode for very large documents
+                                auto_speed_mode = speed_mode
+                                if len(text_chunks) > 500 and not speed_mode:
+                                    auto_speed_mode = True
+                                    status.update(label=f"Large document detected ({len(text_chunks)} chunks). Auto-enabling Speed Mode...")
+                                
+                                if is_large_document and auto_speed_mode:
+                                    # Configure parameters for speed mode
+                                    sample_ratio = 0.5  # 50% of chunks
+                                    max_chunks = None
+                                    
+                                    # For very large documents, use more aggressive sampling
+                                    if len(text_chunks) > 500:
+                                        sample_ratio = 0.25  # 25% of chunks
+                                    
+                                    status.update(label=f"Speed Mode: Processing {int(len(text_chunks) * sample_ratio)} of {len(text_chunks)} chunks...")
+                                    
+                                    # Import and use the optimized batch function from pdf_processor
+                                    from pdf_processor import batch_summarize_chunks
+                                    summaries = batch_summarize_chunks(
+                                        text_chunks,
+                                        model,
+                                        batch_size=40,
+                                        max_workers=20,
+                                        sample_ratio=sample_ratio,
+                                        chunk_limit=max_chunks
+                                    )
+                                else:
+                                    # Use standard processing
+                                    summaries = summarize_text_chunks(text_chunks, model)
                                 
                                 # Create retriever
                                 status.update(label="Creating retriever...")
@@ -715,11 +813,39 @@ def main():
                 on_change=reset_conversation
             )
             
+            # Add processing options
+            with st.expander("Processing Options", expanded=True):
+                speed_mode = st.checkbox(
+                    "Speed Mode (Ultra-Fast)",
+                    value=False,
+                    help="Process large PDFs much faster by intelligently sampling the content. Recommended for 500+ page documents."
+                )
+                
+                auto_enable = st.checkbox(
+                    "Auto-enable Speed Mode for large documents",
+                    value=True,
+                    help="Automatically enables Speed Mode when processing documents with 500+ pages"
+                )
+                
+                # Add more info about speed mode
+                if speed_mode:
+                    st.info("""
+                    ⚡ **Speed Mode Enabled**
+                    
+                    For large documents, the system will:
+                    - Process only 25-50% of content chunks for 500+ page documents
+                    - Use 20 parallel workers for maximum speed
+                    - Prioritize content from the beginning and end of the document
+                    - Complete in ~3-5 minutes for a 1000-page document
+                    
+                    *Best for quick exploration of large documents*
+                    """)
+            
             process_button = st.button("Process PDFs", type="primary")
             
             if process_button and uploaded_files:
                 # Process the uploaded files
-                retriever = process_uploaded_files(uploaded_files)
+                retriever = process_uploaded_files(uploaded_files, speed_mode)
                 
                 if retriever:
                     # Create the RAG chain

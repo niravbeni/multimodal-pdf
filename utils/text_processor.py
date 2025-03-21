@@ -281,7 +281,7 @@ def process_pdf_text(pdf_paths: List[str]) -> List[Document]:
 
 def summarize_text_chunks(documents: List[Document], model) -> List[str]:
     """
-    Generate summaries for text chunks using OpenAI
+    Generate summaries for text chunks using OpenAI with optimized batch processing
     
     Args:
         documents: List of Document objects
@@ -290,32 +290,142 @@ def summarize_text_chunks(documents: List[Document], model) -> List[str]:
     Returns:
         List of summaries
     """
-    summaries = []
+    import time
+    from concurrent.futures import ThreadPoolExecutor
     
-    for i, doc in enumerate(documents):
-        try:
-            # Skip empty documents
-            if not doc.page_content or doc.page_content.isspace():
+    # Determine if batch processing is needed based on document count
+    total_docs = len(documents)
+    
+    # Use batch processing for more than 20 documents
+    if total_docs > 20:
+        logger.info(f"Using batch processing for {total_docs} documents")
+        summaries = [""] * total_docs
+        
+        # Optimized batch size and parallelism based on document count
+        batch_size = 20
+        max_workers = 10
+        
+        # Configure higher parallelism for larger documents
+        if total_docs > 100:
+            batch_size = 30
+            max_workers = 15
+        if total_docs > 500:
+            batch_size = 40
+            max_workers = 20
+            
+        logger.info(f"Batch size: {batch_size}, Max workers: {max_workers}")
+        
+        # Track timing for progress updates
+        start_time = time.time()
+        processed_count = 0
+        
+        # Process in batches
+        for batch_start in range(0, total_docs, batch_size):
+            batch_end = min(batch_start + batch_size, total_docs)
+            batch_docs = documents[batch_start:batch_end]
+            batch_size_actual = len(batch_docs)
+            
+            # Progress tracking with ETA
+            processed_count += batch_size_actual
+            elapsed = time.time() - start_time
+            items_per_second = processed_count / elapsed if elapsed > 0 else 0
+            remaining_items = total_docs - processed_count
+            eta_seconds = remaining_items / items_per_second if items_per_second > 0 else 0
+            
+            # Format time remaining
+            if eta_seconds < 60:
+                eta_str = f"{eta_seconds:.1f} seconds"
+            elif eta_seconds < 3600:
+                eta_str = f"{eta_seconds/60:.1f} minutes"
+            else:
+                eta_str = f"{eta_seconds/3600:.1f} hours"
+                
+            # Calculate progress percentage
+            progress_pct = (processed_count / total_docs) * 100
+                
+            logger.info(f"Processing batch {batch_start//batch_size + 1}: " +
+                       f"chunks {batch_start}-{batch_end-1} ({progress_pct:.1f}% complete, ETA: {eta_str})")
+            
+            # Process batch in parallel
+            batch_results = []
+            
+            def summarize_single_doc(doc_idx, doc):
+                if not doc.page_content or doc.page_content.isspace():
+                    return doc_idx, ""
+                
+                # Use a simple prompt for summarization
+                prompt = f"""
+                Create a concise summary that captures the key information in this text chunk.
+                Focus on factual information and important details that would be relevant for retrieval.
+                Text: {doc.page_content}
+                Summary:
+                """
+                
+                try:
+                    # Generate summary
+                    response = model.invoke(prompt)
+                    summary = response.content.strip() if hasattr(response, 'content') else str(response).strip()
+                    return doc_idx, summary
+                except Exception as e:
+                    logger.error(f"Error generating summary for chunk {doc_idx}: {str(e)}")
+                    return doc_idx, ""
+            
+            # Use ThreadPoolExecutor for parallel processing
+            with ThreadPoolExecutor(max_workers=min(batch_size_actual, max_workers)) as executor:
+                futures = []
+                for j, doc in enumerate(batch_docs):
+                    doc_idx = batch_start + j
+                    futures.append(executor.submit(summarize_single_doc, doc_idx, doc))
+                
+                for future in futures:
+                    try:
+                        idx, summary = future.result()
+                        batch_results.append((idx, summary))
+                    except Exception as e:
+                        logger.error(f"Error in thread: {str(e)}")
+            
+            # Update summaries with results
+            for idx, summary in batch_results:
+                summaries[idx] = summary
+                
+            logger.info(f"Completed batch {batch_start//batch_size + 1}, " +
+                      f"processing at {items_per_second:.2f} chunks/sec")
+        
+        total_time = time.time() - start_time
+        logger.info(f"Completed all batches in {total_time:.2f} seconds, " +
+                  f"average: {total_docs/total_time:.2f} chunks/sec")
+        
+        return summaries
+        
+    # For smaller document sets, use the simpler approach
+    else:
+        logger.info(f"Processing {total_docs} documents sequentially")
+        summaries = []
+        
+        for i, doc in enumerate(documents):
+            try:
+                # Skip empty documents
+                if not doc.page_content or doc.page_content.isspace():
+                    summaries.append("")
+                    continue
+                
+                # Use a simple prompt for summarization
+                prompt = f"""
+                Create a concise summary that captures the key information in this text chunk.
+                Focus on factual information and important details that would be relevant for retrieval.
+                Text: {doc.page_content}
+                Summary:
+                """
+                
+                # Generate summary
+                response = model.invoke(prompt)
+                summary = response.content.strip() if hasattr(response, 'content') else str(response).strip()
+                
+                # Add summary to list
+                summaries.append(summary)
+                
+            except Exception as e:
+                logger.error(f"Error generating summary for chunk {i}: {str(e)}")
                 summaries.append("")
-                continue
-            
-            # Use a simple prompt for summarization
-            prompt = f"""
-            Create a concise summary that captures the key information in this text chunk.
-            Focus on factual information and important details that would be relevant for retrieval.
-            Text: {doc.page_content}
-            Summary:
-            """
-            
-            # Generate summary
-            response = model.invoke(prompt)
-            summary = response.content.strip() if hasattr(response, 'content') else str(response).strip()
-            
-            # Add summary to list
-            summaries.append(summary)
-            
-        except Exception as e:
-            logger.error(f"Error generating summary for chunk {i}: {str(e)}")
-            summaries.append("")
-    
-    return summaries 
+        
+        return summaries 
