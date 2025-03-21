@@ -61,20 +61,20 @@ def inject_css():
     }
     
     /* Citation styling */
-    .citation, code {
-        display: inline-block;
-        margin: 0 2px;
-        margin-top: 12px;
-        padding: 4px 8px;
-        font-family: 'Courier New', monospace;
-        font-size: 0.9em;
-        font-weight: 500;
-        background-color: #f0f2f6;
-        color: #0066cc;
-        border: 1px solid #cfd8dc;
-        border-radius: 4px;
-        white-space: nowrap;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    .citation, code, .citation-style {
+        display: inline-block !important;
+        margin: 0 2px !important;
+        margin-top: 8px !important;
+        padding: 4px 8px !important;
+        font-family: 'Courier New', Courier, monospace !important;
+        font-size: 0.9em !important;
+        font-weight: 500 !important;
+        background-color: #f0f2f6 !important;
+        color: #0066cc !important;
+        border: 1px solid #cfd8dc !important;
+        border-radius: 4px !important;
+        white-space: nowrap !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
     }
     </style>
     """

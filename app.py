@@ -192,19 +192,7 @@ def format_citations(text):
     
     # Create a function to wrap any citation in our styling
     def style_citation(citation_text):
-        return f'''<br><code style="display: inline-block; 
-                  margin: 0 2px; 
-                  margin-top: 8px;
-                  padding: 4px 8px; 
-                  font-family: 'Courier New', Courier, monospace; 
-                  font-size: 0.9em; 
-                  font-weight: 500;
-                  background-color: #f0f2f6; 
-                  color: #0066cc; 
-                  border: 1px solid #cfd8dc; 
-                  border-radius: 4px;
-                  white-space: nowrap;
-                  box-shadow: 0 1px 2px rgba(0,0,0,0.05);">{citation_text}</code>'''
+        return f'''<br><code class="citation-style">{citation_text}</code>'''
     
     # Special pattern for BLACKROCK citation format with semicolons
     # [BLACKROCK - 2025-thematic-outlook_CAIG.pdf, Page 2; BLACKROCK - 2025-thematic-outlook_CAIG.pdf, Page 3]
@@ -449,9 +437,11 @@ def initialize_session_state():
         st.session_state.conversation = []
     else:
         # Add formatted_content field to existing messages if needed
-        for message in st.session_state.conversation:
-            if "formatted_content" not in message:
-                message["formatted_content"] = message["content"]
+        for i, message in enumerate(st.session_state.conversation):
+            if message["role"] == "assistant" and "content" in message:
+                # Always reformat assistant messages to ensure consistent citation styling
+                reformatted = format_citations(message["content"])
+                st.session_state.conversation[i]["formatted_content"] = reformatted
     
     if "rag_chain" not in st.session_state:
         st.session_state.rag_chain = None
@@ -551,9 +541,26 @@ def display_conversation():
         .stChatMessage code {
             display: inline-block !important;
             margin: 0 2px !important;
-            margin-top: 12px !important;
+            margin-top: 8px !important;
             padding: 4px 8px !important;
-            font-family: 'Courier New', monospace !important;
+            font-family: 'Courier New', Courier, monospace !important;
+            font-size: 0.9em !important;
+            font-weight: 500 !important;
+            background-color: #f0f2f6 !important;
+            color: #0066cc !important;
+            border: 1px solid #cfd8dc !important;
+            border-radius: 4px !important;
+            white-space: nowrap !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        }
+
+        /* Add stronger styling for citation formatting */
+        .citation-style {
+            display: inline-block !important;
+            margin: 0 2px !important;
+            margin-top: 8px !important;
+            padding: 4px 8px !important;
+            font-family: 'Courier New', Courier, monospace !important;
             font-size: 0.9em !important;
             font-weight: 500 !important;
             background-color: #f0f2f6 !important;
@@ -649,6 +656,54 @@ def main():
                     key="pdf_selection",
                     height=400,
                 )
+                
+                # Get selected PDFs from the edited dataframe
+                selected_pdfs = edited_df[edited_df["Selected"] == True]
+                
+                # Store selected pdf paths
+                selected_pdf_paths = selected_pdfs["Path"].tolist()
+                
+                # Add process button
+                process_button = st.button("Process Selected PDFs", type="primary")
+                
+                if process_button and len(selected_pdf_paths) > 0:
+                    # Process the selected PDF files
+                    with st.status("Processing selected PDFs...") as status:
+                        try:
+                            # Extract text from PDFs
+                            status.update(label="Extracting text from PDFs...")
+                            text_chunks = process_pdf_text(selected_pdf_paths)
+                            
+                            if not text_chunks:
+                                status.update(label="❌ No text content extracted from PDFs!", state="error")
+                                st.error("Could not extract any text from the selected PDFs. Please try different files.")
+                                st.session_state.rag_chain = None
+                            else:
+                                # Generate summaries for better retrieval
+                                status.update(label=f"Generating summaries for {len(text_chunks)} text chunks...")
+                                model = get_openai_model("gpt-4o-mini")
+                                summaries = summarize_text_chunks(text_chunks, model)
+                                
+                                # Create retriever
+                                status.update(label="Creating retriever...")
+                                embeddings = get_embeddings()
+                                retriever = create_text_retriever(text_chunks, summaries, embeddings)
+                                
+                                # Create the RAG chain
+                                model = get_openai_model("gpt-4o-mini")
+                                st.session_state.rag_chain = get_rag_chain(retriever, model)
+                                
+                                # Reset conversation when processing new PDFs
+                                reset_conversation()
+                                
+                                status.update(label="✅ PDFs processed successfully!", state="complete")
+                        except Exception as e:
+                            error_msg = f"Error processing PDFs: {str(e)}\n{traceback.format_exc()}"
+                            status.update(label=f"❌ {error_msg}", state="error")
+                            st.error(error_msg)
+                            st.session_state.rag_chain = None
+                elif process_button and len(selected_pdf_paths) == 0:
+                    st.warning("Please select at least one PDF to process.")
 
         else:  # Upload PDFs mode
             # File uploader widget
