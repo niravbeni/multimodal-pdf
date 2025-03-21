@@ -130,7 +130,7 @@ def extract_text_from_pdf(pdf_path: str) -> List[Tuple[str, int]]:
         traceback.print_exc()
         return []
 
-def split_text(text: str, chunk_size: int = 1500, chunk_overlap: int = 150) -> List[Document]:
+def split_text(text: str, chunk_size: int = 2000, chunk_overlap: int = 200) -> List[Document]:
     """
     Split text into chunks using RecursiveCharacterTextSplitter
     
@@ -155,6 +155,11 @@ def split_text(text: str, chunk_size: int = 1500, chunk_overlap: int = 150) -> L
     
     # Split text
     chunks = text_splitter.split_text(text)
+    
+    # Debug logging
+    logger.info(f"Original text length: {len(text)}")
+    for i, chunk in enumerate(chunks):
+        logger.info(f"Chunk {i+1} length: {len(chunk)}")
     
     # Convert to Document objects
     documents = [Document(page_content=chunk) for chunk in chunks]
